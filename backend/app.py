@@ -114,7 +114,7 @@ def get_tradeoff(
     budget_monthly: Optional[float] = Query(None, description="Monthly rent budget"),
     property_size_sqft: float = Query(2500.0, description="Warehouse size in sq.ft"),
     petrol_cost_per_km: float = Query(2.0, description="Fuel cost rate"),
-    batch_size: int = Query(3, description="Deliveries per trip"),
+    batch_size: int = Query(23, description="Deliveries per driver per day (default: 23)"),
     min_dispersion_km: float = Query(6.5, description="Min separation distance between hubs in km")
 ):
     """

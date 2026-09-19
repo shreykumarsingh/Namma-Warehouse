@@ -137,9 +137,11 @@ class GridpointSolver:
                 'property_size_sqft': 2500,
                 'budget_monthly': None,
                 'petrol_cost_per_km': 2.0,
-                'batch_size': 3,
+                'batch_size': 23,
                 'min_dispersion_km': 6.5,
-                'max_radius_km': 25
+                'max_radius_km': 25,
+                'ev_fleet_pct': 0.0,
+                'target_sla_minutes': 10.0
             }
         }
 
@@ -208,24 +210,17 @@ class GridpointSolver:
                 min_dists = sub_D[np.arange(self.n), assigned_wh]
 
         # Delivery Route Modeling:
-        # If batch_size >= 12, it represents deliveries per driver per day (range 15-30, default 23)
-        # If batch_size < 12, it represents deliveries per trip (milk-run batch routing)
+        # Deliveries per driver per day (range: 15-30, mean/default: 23)
+        daily_driver_orders = float(batch_size) if batch_size >= 12 else 23.0
+        trips = self.orders / daily_driver_orders
         local_hop_km = 0.4
-        if batch_size >= 12:
-            daily_driver_orders = float(batch_size)
-            trips = self.orders / daily_driver_orders
-            trip_distance = (2.0 * min_dists) + ((daily_driver_orders - 1.0) * local_hop_km)
-            daily_fleet_km = float(np.sum(trips * trip_distance))
-        else:
-            B = max(1, batch_size)
-            trips = self.orders / float(B)
-            trip_distance = (2.0 * min_dists) + ((B - 1.0) * local_hop_km)
-            daily_fleet_km = float(np.sum(trips * trip_distance))
+        trip_distance = (2.0 * min_dists) + ((daily_driver_orders - 1.0) * local_hop_km)
+        daily_fleet_km = float(np.sum(trips * trip_distance))
 
         # 1. Quick-Commerce 10-Minute SLA Compliance Metric:
         # Travel time = (Distance in km / Average speed in traffic) + 3 minutes picking time
-        # Average two-wheeler speed in traffic (Bangalore): 28 km/h / (1 + 0.28 * traffic_index)
-        speed_kmh = 28.0 / (1.0 + 0.28 * self.traffic)
+        # Average two-wheeler speed in traffic (Bangalore): 30 km/h / (1 + 0.28 * traffic_index)
+        speed_kmh = 30.0 / (1.0 + 0.28 * self.traffic)
         transit_times_min = (min_dists / speed_kmh) * 60.0
         node_delivery_times = picking_time_min + transit_times_min
 
@@ -290,7 +285,7 @@ class GridpointSolver:
         budget_monthly: Optional[float] = None,
         property_size_sqft: float = 2500.0,
         petrol_cost_per_km: float = 2.0,
-        batch_size: int = 3,
+        batch_size: int = 23,
         min_dispersion_km: float = 6.5,
         max_radius_km: Optional[float] = None,
         use_capacity: bool = False,
@@ -644,7 +639,7 @@ class GridpointSolver:
         budget_monthly: Optional[float] = None,
         property_size_sqft: float = 2500.0,
         petrol_cost_per_km: float = 2.0,
-        batch_size: int = 3,
+        batch_size: int = 23,
         min_dispersion_km: float = 6.5
     ) -> Dict[str, Any]:
         """

@@ -785,10 +785,10 @@
     </div>
 
     <div class="form-group">
-      <label>Deliveries per Trip (Batch)</label>
+      <label>Deliveries per Driver / Day (15 to 30)</label>
       <div class="range-row">
-        <input type="range" id="batchSize" min="1" max="10" value="3" />
-        <span class="range-value" id="batchSizeVal">3</span>
+        <input type="range" id="batchSize" min="15" max="30" value="23" />
+        <span class="range-value" id="batchSizeVal">23</span>
       </div>
     </div>
 
@@ -1105,11 +1105,16 @@
         const sla = lastResult.costs.sla_compliance_pct;
         const slaColor = sla >= 85 ? 'var(--success)' : (sla >= 40 ? 'var(--warning)' : 'var(--danger)');
 
+        const potentialAnnualSavings = (lastResult.costs.daily_petrol_cost - lastResult.costs.daily_ev_cost) * 365.0;
+        const evSavingsText = lastResult.costs.ev_fleet_pct > 0
+          ? `${formatINR(lastResult.costs.annual_fuel_savings)}/yr (${lastResult.costs.ev_fleet_pct.toFixed(0)}% EV)`
+          : `${formatINR(potentialAnnualSavings)}/yr potential (toggle 100% EV)`;
+
         setStatus(
           `<span class="highlight">✓ ${lastResult.status.toUpperCase()}</span> — ` +
           `<strong>${lastResult.warehouses.length}</strong> hubs placed<br>` +
           `⚡ <strong>10-Min SLA:</strong> <span style="font-weight:700;color:${slaColor}">${sla.toFixed(1)}%</span> (Avg: ${lastResult.costs.avg_delivery_time_min.toFixed(1)} min)<br>` +
-          `🌱 <strong>EV Savings:</strong> <span style="color:var(--success);font-weight:700">${formatINR(lastResult.costs.annual_fuel_savings)}/yr</span> (${lastResult.costs.ev_fleet_pct.toFixed(0)}% EV)<br>` +
+          `🌱 <strong>EV Savings:</strong> <span style="color:var(--success);font-weight:700">${evSavingsText}</span><br>` +
           `🏢 <strong>Facility Rent:</strong> ${formatINR(lastResult.costs.monthly_rent)}/mo · 👥 <strong>${formatNum(lastResult.costs.total_employees)}</strong> drivers`
         );
 
@@ -1374,19 +1379,19 @@
 
           <div class="esg-savings-banner">
             <div class="savings-label">💰 Net Annual Fuel Savings</div>
-            <div class="savings-val">${formatINR(annualSavings)} / year</div>
-            <div class="savings-sub">For ${formatNum(costs.total_employees)} drivers traveling ${formatNum(costs.daily_fleet_km)} km/day</div>
+            <div class="savings-val">${formatINR(annualSavings > 0 ? annualSavings : (petrolDaily - evDaily) * 365.0)} / year</div>
+            <div class="savings-sub">${evPct > 0 ? `Realized with ${evPct.toFixed(0)}% EV Fleet Transition` : 'Potential savings with 100% EV (click toggle on left)'}</div>
           </div>
 
           <div class="esg-co2-row">
             <div class="co2-item">
               <span class="co2-label">Tailpipe CO₂ Eliminated:</span>
               <span class="co2-val" style="color:var(--success);font-weight:700">
-                ${co2Avoided > 0 ? `${formatNum(co2Avoided)} Tons/yr avoided (100%)` : '0 Tons (0% EV)'}
+                ${co2Avoided > 0 ? `${formatNum(co2Avoided)} Tons/yr avoided (${evPct.toFixed(0)}%)` : `Up to ${formatNum((costs.daily_fleet_km / 35.0 * 2.31 * 365) / 1000)} Tons/yr (100% EV)`}
               </span>
             </div>
             <div class="co2-item">
-              <span class="co2-label">Remaining Emissions:</span>
+              <span class="co2-label">${evPct > 0 ? 'Remaining Tailpipe Emissions:' : 'Current Baseline Emissions:'}</span>
               <span class="co2-val">${formatNum(costs.annual_co2_tons)} Tons CO₂/yr</span>
             </div>
           </div>
