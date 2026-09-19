@@ -11,6 +11,9 @@ class OptimizeRequest(BaseModel):
     max_radius_km: Optional[float] = Field(default=None, description="Max delivery radius cutoff in km (None = unconstrained)")
     use_capacity: bool = Field(default=False, description="Whether to enforce warehouse capacity limits")
     capacity_per_warehouse: Optional[float] = Field(default=None, description="Max daily order throughput per warehouse")
+    ev_fleet_pct: float = Field(default=0.0, ge=0.0, le=100.0, description="Percentage of delivery fleet transitioned to Electric 2-Wheelers (0 to 100%)")
+    picking_time_min: float = Field(default=3.0, ge=0.0, le=15.0, description="Dark store picking and packing time in minutes (default: 3.0)")
+    target_sla_minutes: float = Field(default=10.0, ge=5.0, le=60.0, description="Quick-Commerce SLA target in minutes (default: 10.0)")
 
 class WarehouseDetail(BaseModel):
     id: str
@@ -30,6 +33,8 @@ class WarehouseDetail(BaseModel):
     monthly_salary: float
     utilization_pct: float
     color: str
+    avg_delivery_time_min: float = 0.0
+    sla_compliance_pct: float = 0.0
 
 class Assignment(BaseModel):
     demand_id: str
@@ -50,6 +55,17 @@ class CostBreakdown(BaseModel):
     annual_rent: float
     total_annual: float
     budget_used_pct: Optional[float] = None
+    avg_delivery_time_min: float = 0.0
+    sla_compliance_pct: float = 0.0
+    target_sla_minutes: float = 10.0
+    ev_fleet_pct: float = 0.0
+    petrol_running_cost_per_km: float = 2.0
+    ev_charging_cost_per_km: float = 0.35
+    daily_petrol_cost: float = 0.0
+    daily_ev_cost: float = 0.0
+    daily_fuel_savings: float = 0.0
+    annual_fuel_savings: float = 0.0
+    annual_co2_saved_tons: float = 0.0
 
 class OptimizeResponse(BaseModel):
     status: str

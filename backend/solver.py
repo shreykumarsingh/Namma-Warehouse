@@ -151,17 +151,21 @@ class GridpointSolver:
         batch_size: int,
         max_radius: Optional[float] = None,
         use_capacity: bool = False,
-        capacity_limit: Optional[float] = None
-    ) -> Tuple[Optional[np.ndarray], Optional[Dict[str, float]]]:
+        capacity_limit: Optional[float] = None,
+        ev_fleet_pct: float = 0.0,
+        picking_time_min: float = 3.0,
+        target_sla_minutes: float = 10.0
+    ) -> Tuple[Optional[np.ndarray], Optional[Dict[str, float]], Optional[np.ndarray]]:
         """
-        Anti-Deadlock Regret Assignment & Detailed Cost/Workforce Breakdown:
+        Anti-Deadlock Regret Assignment & Detailed Cost/Workforce/SLA/ESG Breakdown:
         - Allocates demand nodes using Regret-First priorities so isolated nodes are never starved.
         - Computes driver workforce (mean 23 orders/day per driver @ Rs 1,000/day).
-        - Computes fleet travel distance & sustainability fuel/CO2 metrics.
+        - Computes 10-Minute Quick-Commerce SLA delivery times and compliance %.
+        - Simulates EV Fleet Transition savings (Rs 2.00 petrol vs Rs 0.35 EV) and carbon reduction.
         - Calculates facility rent under company budget.
         """
         if not sites:
-            return None, None
+            return None, None, None
 
         sub_D = self.D_road[:, sites] # shape: (800, len(sites))
 
@@ -171,7 +175,7 @@ class GridpointSolver:
             min_dists = sub_D[np.arange(self.n), assigned_wh]
 
             if max_radius is not None and np.any(min_dists > max_radius):
-                return None, None
+                return None, None, None
         else:
             # Capacitated: Anti-Deadlock Regret-First Assignment
             cap = capacity_limit or ((self.total_orders / len(sites)) * 1.35)
@@ -180,7 +184,7 @@ class GridpointSolver:
 
             if len(sites) == 1:
                 if self.total_orders > cap:
-                    return None, None
+                    return None, None, None
                 assigned_wh = np.zeros(self.n, dtype=np.int32)
                 min_dists = sub_D[:, 0]
             else:
@@ -200,7 +204,7 @@ class GridpointSolver:
                             assigned = True
                             break
                     if not assigned:
-                        return None, None
+                        return None, None, None
                 min_dists = sub_D[np.arange(self.n), assigned_wh]
 
         # Delivery Route Modeling:
@@ -218,13 +222,39 @@ class GridpointSolver:
             trip_distance = (2.0 * min_dists) + ((B - 1.0) * local_hop_km)
             daily_fleet_km = float(np.sum(trips * trip_distance))
 
-        # Sustainability Metrics: Two-wheeler fuel efficiency ~35 km/L, 2.31 kg CO2/L
-        daily_fuel_liters = daily_fleet_km / 35.0
-        annual_co2_tons = (daily_fuel_liters * 2.31 * 365.0) / 1000.0
+        # 1. Quick-Commerce 10-Minute SLA Compliance Metric:
+        # Travel time = (Distance in km / Average speed in traffic) + 3 minutes picking time
+        # Average two-wheeler speed in traffic (Bangalore): 28 km/h / (1 + 0.28 * traffic_index)
+        speed_kmh = 28.0 / (1.0 + 0.28 * self.traffic)
+        transit_times_min = (min_dists / speed_kmh) * 60.0
+        node_delivery_times = picking_time_min + transit_times_min
 
-        # Petrol metric for reporting
-        daily_fuel = daily_fleet_km * petrol_cost
-        annual_fuel = daily_fuel * 365.0
+        sla_threshold = float(target_sla_minutes)
+        sla_mask = (node_delivery_times <= sla_threshold)
+        sla_compliant_orders = float(np.sum(self.orders[sla_mask]))
+        network_sla_compliance_pct = round(float((sla_compliant_orders / self.total_orders) * 100.0), 1)
+        network_avg_delivery_time = round(float(np.sum(self.orders * node_delivery_times) / self.total_orders), 1)
+
+        # 2. EV Transition and Fleet Green Savings Simulator (ESG Pitch):
+        # Petrol running cost: Rs 2.00 / km
+        # EV charging cost: Rs 0.35 / km (~82.5% cheaper)
+        petrol_rate = float(petrol_cost)
+        ev_rate = 0.35
+        daily_petrol_cost = round(daily_fleet_km * petrol_rate, 2)
+        daily_ev_cost = round(daily_fleet_km * ev_rate, 2)
+        ev_ratio = max(0.0, min(1.0, float(ev_fleet_pct) / 100.0))
+
+        # Effective fuel expenditure given fleet EV transition percentage
+        effective_daily_fuel = round(daily_petrol_cost * (1.0 - ev_ratio) + daily_ev_cost * ev_ratio, 2)
+        effective_annual_fuel = round(effective_daily_fuel * 365.0, 2)
+        daily_fuel_savings = round((daily_petrol_cost - daily_ev_cost) * ev_ratio, 2)
+        annual_fuel_savings = round(daily_fuel_savings * 365.0, 2)
+
+        # Sustainability Metrics: Two-wheeler baseline ~35 km/L, 2.31 kg CO2/L
+        daily_fuel_liters = daily_fleet_km / 35.0
+        baseline_annual_co2_tons = (daily_fuel_liters * 2.31 * 365.0) / 1000.0
+        annual_co2_saved_tons = round(baseline_annual_co2_tons * ev_ratio, 1)
+        remaining_annual_co2_tons = round(baseline_annual_co2_tons * (1.0 - ev_ratio), 1)
 
         # Facility Rent (Company lease cost: commercial rent + power/staffing baseline)
         monthly_rent_per_site = (self.prices[sites] * property_size * 0.004) + 120000.0 * (self.prices[sites] / self.mean_price)
@@ -234,14 +264,25 @@ class GridpointSolver:
 
         return assigned_wh, {
             'daily_fleet_km': round(daily_fleet_km, 1),
-            'daily_fuel': round(daily_fuel, 2),
-            'annual_fuel': round(annual_fuel, 2),
-            'daily_fuel_liters': round(daily_fuel_liters, 1),
-            'annual_co2_tons': round(annual_co2_tons, 1),
+            'daily_fuel': effective_daily_fuel,
+            'annual_fuel': effective_annual_fuel,
+            'daily_fuel_liters': round(daily_fuel_liters * (1.0 - ev_ratio), 1),
+            'annual_co2_tons': remaining_annual_co2_tons,
             'monthly_rent': round(monthly_rent, 2),
             'annual_rent': round(annual_rent, 2),
-            'total_annual': round(total_annual, 2)
-        }
+            'total_annual': round(total_annual, 2),
+            'avg_delivery_time_min': network_avg_delivery_time,
+            'sla_compliance_pct': network_sla_compliance_pct,
+            'target_sla_minutes': sla_threshold,
+            'ev_fleet_pct': round(float(ev_fleet_pct), 1),
+            'petrol_running_cost_per_km': petrol_rate,
+            'ev_charging_cost_per_km': ev_rate,
+            'daily_petrol_cost': daily_petrol_cost,
+            'daily_ev_cost': daily_ev_cost,
+            'daily_fuel_savings': daily_fuel_savings,
+            'annual_fuel_savings': annual_fuel_savings,
+            'annual_co2_saved_tons': annual_co2_saved_tons
+        }, node_delivery_times
 
     def solve(
         self,
@@ -253,7 +294,10 @@ class GridpointSolver:
         min_dispersion_km: float = 6.5,
         max_radius_km: Optional[float] = None,
         use_capacity: bool = False,
-        capacity_per_warehouse: Optional[float] = None
+        capacity_per_warehouse: Optional[float] = None,
+        ev_fleet_pct: float = 0.0,
+        picking_time_min: float = 3.0,
+        target_sla_minutes: float = 10.0
     ) -> Dict[str, Any]:
         """
         Fast Discrete Facility Location Optimizer supporting up to 100 Warehouses:
@@ -472,9 +516,10 @@ class GridpointSolver:
                 }
 
         # 7. Final Assignment & Cost Calculation
-        assigned_wh, final_costs = self.compute_cost_and_assignment(
+        assigned_wh, final_costs, node_delivery_times = self.compute_cost_and_assignment(
             current_sites, property_size_sqft, petrol_cost_per_km, batch_size,
-            max_radius=max_radius_km, use_capacity=use_capacity, capacity_limit=capacity_per_warehouse
+            max_radius=max_radius_km, use_capacity=use_capacity, capacity_limit=capacity_per_warehouse,
+            ev_fleet_pct=ev_fleet_pct, picking_time_min=picking_time_min, target_sla_minutes=target_sla_minutes
         )
 
         if final_costs is None or assigned_wh is None:
@@ -498,7 +543,7 @@ class GridpointSolver:
         else:
             min_sep_achieved = 0.0
 
-        # Format Warehouses Details with Delivery Workforce Metrics (Mean 23 deliveries/day @ Rs 1,000/day)
+        # Format Warehouses Details with Delivery Workforce & SLA Metrics
         warehouses_out = []
         total_network_employees = 0
 
@@ -519,6 +564,17 @@ class GridpointSolver:
             monthly_salary = float(daily_salary * 30.0)
             total_network_employees += employees_req
 
+            # Per-warehouse 10-Minute SLA & Average Delivery Time
+            if site_orders > 0 and node_delivery_times is not None:
+                wh_orders = self.orders[assigned_mask]
+                wh_times = node_delivery_times[assigned_mask]
+                wh_avg_time = round(float(np.sum(wh_orders * wh_times) / site_orders), 1)
+                wh_sla_orders = float(np.sum(wh_orders[wh_times <= target_sla_minutes]))
+                wh_sla_pct = round(float((wh_sla_orders / site_orders) * 100.0), 1)
+            else:
+                wh_avg_time = 0.0
+                wh_sla_pct = 0.0
+
             warehouses_out.append({
                 'id': pt['point_id'],
                 'name': f"{pt['nearest_locality']} Hub",
@@ -536,7 +592,9 @@ class GridpointSolver:
                 'daily_salary': daily_salary,
                 'monthly_salary': monthly_salary,
                 'utilization_pct': util_pct,
-                'color': get_warehouse_color(rank, p)
+                'color': get_warehouse_color(rank, p),
+                'avg_delivery_time_min': wh_avg_time,
+                'sla_compliance_pct': wh_sla_pct
             })
 
         # Format Assignments (for Map Spoke Lines)

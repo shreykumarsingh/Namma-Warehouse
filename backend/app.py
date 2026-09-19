@@ -66,7 +66,15 @@ def root():
 def serve_frontend():
     """Serves the GRIDPOINT interactive map visualization."""
     index_path = os.path.join(BASE_DIR, "index.html")
-    return FileResponse(index_path, media_type="text/html")
+    return FileResponse(
+        index_path,
+        media_type="text/html",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+    )
 
 @app.get("/api/city", response_model=CityResponse, summary="Fetch City Grid & Metadata")
 def get_city():
@@ -94,7 +102,10 @@ def optimize_network(req: OptimizeRequest):
         min_dispersion_km=req.min_dispersion_km,
         max_radius_km=req.max_radius_km,
         use_capacity=req.use_capacity,
-        capacity_per_warehouse=req.capacity_per_warehouse
+        capacity_per_warehouse=req.capacity_per_warehouse,
+        ev_fleet_pct=req.ev_fleet_pct,
+        picking_time_min=req.picking_time_min,
+        target_sla_minutes=req.target_sla_minutes
     )
     return result
 

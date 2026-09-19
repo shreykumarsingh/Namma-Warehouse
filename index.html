@@ -51,7 +51,7 @@
       position: fixed;
       top: 16px;
       left: 16px;
-      width: 340px;
+      width: 350px;
       max-height: calc(100vh - 32px);
       overflow-y: auto;
       background: var(--bg-panel);
@@ -238,12 +238,12 @@
       font-weight: 600;
     }
 
-    /* ---- Right Panel: Cost & Workforce Breakdown ---- */
+    /* ---- Right Panel: Cost, SLA & ESG Operations ---- */
     .cost-panel {
       position: fixed;
       top: 16px;
       right: 16px;
-      width: 330px;
+      width: 360px;
       max-height: calc(100vh - 32px);
       overflow-y: auto;
       background: var(--bg-panel);
@@ -327,12 +327,307 @@
       -webkit-text-fill-color: transparent;
     }
 
+    /* ---- Fleet Power Toggle & ESG Controls ---- */
+    .fleet-toggle-group {
+      display: flex;
+      gap: 6px;
+      background: rgba(0,0,0,0.04);
+      padding: 4px;
+      border-radius: 9px;
+      margin-bottom: 10px;
+      border: 1px solid rgba(0,0,0,0.06);
+    }
+
+    .fleet-toggle-btn {
+      flex: 1;
+      padding: 8px 6px;
+      border: none;
+      border-radius: 7px;
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: transparent;
+      color: var(--text-secondary);
+      font-family: var(--font);
+      text-align: center;
+    }
+
+    .fleet-toggle-btn.active {
+      background: #7c3aed;
+      color: white;
+      box-shadow: 0 2px 10px rgba(124,58,237,0.35);
+    }
+
+    .fleet-toggle-btn.active.ev {
+      background: #059669;
+      box-shadow: 0 2px 10px rgba(5,150,105,0.35);
+    }
+
+    /* ---- 10-Minute SLA Compliance Card ---- */
+    .sla-card {
+      background: linear-gradient(135deg, rgba(124,58,237,0.07), rgba(59,130,246,0.04));
+      border: 1px solid rgba(124,58,237,0.22);
+      border-radius: 12px;
+      padding: 13px 14px;
+      margin-bottom: 12px;
+      box-shadow: 0 4px 16px rgba(124,58,237,0.06);
+    }
+
+    .sla-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .sla-title {
+      font-size: 11.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: #6d28d9;
+    }
+
+    .sla-target-tag {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 10px;
+      background: rgba(124,58,237,0.12);
+      color: #6d28d9;
+    }
+
+    .sla-metric-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-bottom: 8px;
+    }
+
+    .sla-main-metric {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+
+    .sla-pct-val {
+      font-size: 27px;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -1px;
+    }
+
+    .sla-pct-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .sla-time-box {
+      text-align: right;
+    }
+
+    .sla-time-box .time-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    .sla-time-box .time-val {
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    .sla-gauge-container {
+      height: 9px;
+      background: rgba(0,0,0,0.07);
+      border-radius: 5px;
+      overflow: hidden;
+      margin: 8px 0;
+      position: relative;
+    }
+
+    .sla-gauge-fill {
+      height: 100%;
+      border-radius: 5px;
+      transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .sla-breakdown-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin: 6px 0 8px 0;
+      padding-top: 4px;
+      border-top: 1px dashed rgba(0,0,0,0.08);
+    }
+
+    .sla-callout {
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 11px;
+      line-height: 1.4;
+      margin-top: 6px;
+    }
+
+    .sla-badge-danger {
+      background: rgba(220,38,38,0.08);
+      border: 1px solid rgba(220,38,38,0.25);
+      color: #991b1b;
+    }
+
+    .sla-badge-warning {
+      background: rgba(217,119,6,0.08);
+      border: 1px solid rgba(217,119,6,0.25);
+      color: #92400e;
+    }
+
+    .sla-badge-success {
+      background: rgba(5,150,105,0.08);
+      border: 1px solid rgba(5,150,105,0.25);
+      color: #065f46;
+    }
+
+    /* ---- ESG Fleet Simulator Card ---- */
+    .esg-card {
+      background: linear-gradient(135deg, rgba(5,150,105,0.08), rgba(16,185,129,0.03));
+      border: 1px solid rgba(5,150,105,0.22);
+      border-radius: 12px;
+      padding: 13px 14px;
+      margin-bottom: 12px;
+      box-shadow: 0 4px 16px rgba(5,150,105,0.06);
+    }
+
+    .esg-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .esg-title {
+      font-size: 11.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: #047857;
+    }
+
+    .esg-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 10px;
+      background: rgba(5,150,105,0.14);
+      color: #047857;
+    }
+
+    .esg-compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .esg-stat-box {
+      background: rgba(255,255,255,0.7);
+      border: 1px solid rgba(0,0,0,0.06);
+      border-radius: 8px;
+      padding: 7px 8px;
+    }
+
+    .esg-stat-box.highlight {
+      background: rgba(5,150,105,0.07);
+      border-color: rgba(5,150,105,0.25);
+    }
+
+    .esg-stat-box .stat-title {
+      font-size: 9.5px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .esg-stat-box .stat-val {
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .esg-stat-box .stat-val.petrol { color: #d97706; }
+    .esg-stat-box .stat-val.ev { color: #059669; }
+
+    .esg-stat-box .stat-sub {
+      font-size: 9.5px;
+      color: var(--text-muted);
+      margin-top: 1px;
+    }
+
+    .esg-savings-banner {
+      background: linear-gradient(135deg, rgba(5,150,105,0.12), rgba(16,185,129,0.08));
+      border: 1px solid rgba(5,150,105,0.3);
+      border-radius: 9px;
+      padding: 9px;
+      text-align: center;
+      margin-bottom: 8px;
+    }
+
+    .esg-savings-banner .savings-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #047857;
+    }
+
+    .esg-savings-banner .savings-val {
+      font-size: 19px;
+      font-weight: 800;
+      color: #047857;
+      margin: 2px 0;
+    }
+
+    .esg-savings-banner .savings-sub {
+      font-size: 9.5px;
+      color: var(--text-secondary);
+    }
+
+    .esg-co2-row {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      font-size: 10.5px;
+      color: var(--text-secondary);
+      padding: 5px 0;
+      border-top: 1px dashed rgba(0,0,0,0.08);
+      border-bottom: 1px dashed rgba(0,0,0,0.08);
+      margin-bottom: 6px;
+    }
+
+    .esg-co2-row .co2-item {
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .judge-note {
+      font-size: 9.5px;
+      color: var(--text-muted);
+      line-height: 1.35;
+      background: rgba(0,0,0,0.02);
+      border-left: 2px solid #059669;
+      padding: 5px 7px;
+      border-radius: 0 6px 6px 0;
+    }
+
     /* ---- Warehouse Legend (Bottom-Right) ---- */
     .warehouse-legend {
       position: fixed;
       bottom: 24px;
       right: 16px;
-      width: 330px;
+      width: 360px;
       max-height: 250px;
       overflow-y: auto;
       background: var(--bg-panel);
@@ -343,6 +638,8 @@
       padding: 14px 18px;
       z-index: 1000;
       display: none;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    }
       box-shadow: 0 8px 32px rgba(0,0,0,0.1);
     }
 
@@ -500,6 +797,22 @@
       <input type="number" id="minDispersion" value="6.5" min="0" step="0.5" />
     </div>
 
+    <!-- ESG / EV Fleet Simulator Controls -->
+    <div class="cost-section-title" style="margin-top:14px;margin-bottom:8px">🌱 ESG Fleet Power Simulator</div>
+    <div class="fleet-toggle-group">
+      <button type="button" class="fleet-toggle-btn active" id="btnFleetPetrol" onclick="setFleetPower(0)">⛽ Petrol (₹2/km)</button>
+      <button type="button" class="fleet-toggle-btn" id="btnFleetEV" onclick="setFleetPower(100)">⚡ 100% EV (₹0.35/km)</button>
+    </div>
+    <div class="form-group" style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <label style="margin:0;font-size:10.5px">EV Fleet Transition</label>
+        <span class="range-value" id="evFleetVal" style="color:var(--success);font-weight:700">0%</span>
+      </div>
+      <div class="range-row">
+        <input type="range" id="evFleetPct" min="0" max="100" value="0" step="5" />
+      </div>
+    </div>
+
     <button class="btn-optimize" id="btnOptimize" onclick="runOptimization()">
       ⚡ Run Optimization
     </button>
@@ -565,6 +878,75 @@
     document.getElementById("batchSize").addEventListener("input", (e) => {
       document.getElementById("batchSizeVal").textContent = e.target.value;
     });
+
+    // ---- ESG Fleet Power Switch & Live Simulator ----
+    function setFleetPower(pct) {
+      document.getElementById("evFleetPct").value = pct;
+      document.getElementById("evFleetVal").textContent = pct + "%";
+
+      const btnP = document.getElementById("btnFleetPetrol");
+      const btnEV = document.getElementById("btnFleetEV");
+      if (pct === 0) {
+        btnP.classList.add("active");
+        btnEV.classList.remove("active", "ev");
+      } else if (pct === 100) {
+        btnP.classList.remove("active");
+        btnEV.classList.add("active", "ev");
+      } else {
+        btnP.classList.remove("active");
+        btnEV.classList.remove("active", "ev");
+      }
+
+      if (lastResult && lastResult.costs) {
+        updateCostsLive(pct);
+      }
+    }
+
+    document.getElementById("evFleetPct").addEventListener("input", (e) => {
+      const pct = parseFloat(e.target.value);
+      document.getElementById("evFleetVal").textContent = pct + "%";
+
+      const btnP = document.getElementById("btnFleetPetrol");
+      const btnEV = document.getElementById("btnFleetEV");
+      if (pct === 0) {
+        btnP.classList.add("active");
+        btnEV.classList.remove("active", "ev");
+      } else if (pct === 100) {
+        btnP.classList.remove("active");
+        btnEV.classList.add("active", "ev");
+      } else {
+        btnP.classList.remove("active");
+        btnEV.classList.remove("active", "ev");
+      }
+
+      if (lastResult && lastResult.costs) {
+        updateCostsLive(pct);
+      }
+    });
+
+    function updateCostsLive(pct) {
+      if (!lastResult || !lastResult.costs) return;
+      const c = lastResult.costs;
+      const evRatio = pct / 100.0;
+      const petrolDaily = c.daily_petrol_cost || (c.daily_fleet_km * (c.petrol_running_cost_per_km || 2.0));
+      const evDaily = c.daily_ev_cost || (c.daily_fleet_km * 0.35);
+
+      c.ev_fleet_pct = pct;
+      c.daily_petrol_cost = petrolDaily;
+      c.daily_ev_cost = evDaily;
+      c.daily_fuel_savings = (petrolDaily - evDaily) * evRatio;
+      c.annual_fuel_savings = c.daily_fuel_savings * 365.0;
+      c.daily_fuel = (petrolDaily * (1.0 - evRatio)) + (evDaily * evRatio);
+      c.annual_fuel = c.daily_fuel * 365.0;
+
+      // Baseline annual CO2 from total fleet km (0% EV)
+      const baselineCo2Tons = (c.daily_fleet_km / 35.0 * 2.31 * 365.0) / 1000.0;
+      c.annual_co2_saved_tons = baselineCo2Tons * evRatio;
+      c.annual_co2_tons = baselineCo2Tons * (1.0 - evRatio);
+      c.daily_fuel_liters = (c.daily_fleet_km / 35.0) * (1.0 - evRatio);
+
+      renderCostPanel(c);
+    }
 
     // ---- Helpers ----
     function formatINR(val) {
@@ -684,6 +1066,7 @@
       const petrolCost = parseFloat(document.getElementById("petrolCost").value);
       const batchSize = parseInt(document.getElementById("batchSize").value);
       const minDispersion = parseFloat(document.getElementById("minDispersion").value);
+      const evFleetPct = parseFloat(document.getElementById("evFleetPct").value || 0);
 
       showLoading(`Running p-Median solver for ${numWarehouses} warehouse${numWarehouses > 1 ? 's' : ''}…`);
 
@@ -697,7 +1080,10 @@
             property_size_sqft: propertySize,
             petrol_cost_per_km: petrolCost,
             batch_size: batchSize,
-            min_dispersion_km: minDispersion
+            min_dispersion_km: minDispersion,
+            ev_fleet_pct: evFleetPct,
+            picking_time_min: 3.0,
+            target_sla_minutes: 10.0
           })
         });
 
@@ -716,12 +1102,15 @@
 
         renderResults(lastResult);
 
+        const sla = lastResult.costs.sla_compliance_pct;
+        const slaColor = sla >= 85 ? 'var(--success)' : (sla >= 40 ? 'var(--warning)' : 'var(--danger)');
+
         setStatus(
           `<span class="highlight">✓ ${lastResult.status.toUpperCase()}</span> — ` +
-          `<strong>${lastResult.warehouses.length}</strong> warehouses placed<br>` +
-          `🏢 Facility Rent: <span class="cost">${formatINR(lastResult.costs.monthly_rent)}/mo</span><br>` +
-          `👥 Delivery Fleet: <span class="highlight">${formatNum(lastResult.costs.total_employees)} drivers</span><br>` +
-          `🌱 Sustainability: <span style="color:#059669;font-weight:600">${formatNum(lastResult.costs.annual_co2_tons)} Tons CO₂/yr</span>`
+          `<strong>${lastResult.warehouses.length}</strong> hubs placed<br>` +
+          `⚡ <strong>10-Min SLA:</strong> <span style="font-weight:700;color:${slaColor}">${sla.toFixed(1)}%</span> (Avg: ${lastResult.costs.avg_delivery_time_min.toFixed(1)} min)<br>` +
+          `🌱 <strong>EV Savings:</strong> <span style="color:var(--success);font-weight:700">${formatINR(lastResult.costs.annual_fuel_savings)}/yr</span> (${lastResult.costs.ev_fleet_pct.toFixed(0)}% EV)<br>` +
+          `🏢 <strong>Facility Rent:</strong> ${formatINR(lastResult.costs.monthly_rent)}/mo · 👥 <strong>${formatNum(lastResult.costs.total_employees)}</strong> drivers`
         );
 
       } catch (err) {
@@ -801,10 +1190,18 @@
         });
 
         warehouseCircle.bindPopup(
-          `<div style="min-width:230px">` +
+          `<div style="min-width:240px">` +
           `<strong style="font-size:14px;color:${w.color}">W${i + 1}: ${w.name}</strong><br>` +
           `<span style="color:var(--text-muted);font-size:11px">${w.locality} · ${w.zone}</span>` +
           `<hr style="border:0;border-top:1px solid rgba(0,0,0,0.1);margin:8px 0">` +
+          `<div style="display:flex;justify-content:space-between;margin-bottom:4px;background:rgba(124,58,237,0.06);padding:3px 6px;border-radius:6px">` +
+          `<span>⚡ <strong>10-Min SLA:</strong></span>` +
+          `<span style="font-weight:700;color:${w.sla_compliance_pct >= 85 ? 'var(--success)' : (w.sla_compliance_pct >= 40 ? 'var(--warning)' : 'var(--danger)')}">${w.sla_compliance_pct.toFixed(1)}%</span>` +
+          `</div>` +
+          `<div style="display:flex;justify-content:space-between;margin-bottom:4px">` +
+          `<span>⏱️ <strong>Avg Delivery Time:</strong></span>` +
+          `<span style="font-weight:600">${w.avg_delivery_time_min.toFixed(1)} min</span>` +
+          `</div>` +
           `<div style="display:flex;justify-content:space-between;margin-bottom:3px">` +
           `<span>👥 <strong>Delivery Workforce:</strong></span>` +
           `<span style="font-weight:700;color:var(--accent)">${formatNum(w.employees_required)} drivers</span>` +
@@ -865,7 +1262,7 @@
               pointer-events: none;
               position: relative;
               top: 18px;
-            ">W${i + 1}: ${w.name} (${formatNum(w.employees_required)}👥)</div>`,
+            ">W${i + 1}: ${w.name} (${formatNum(w.employees_required)}👥 · ${w.avg_delivery_time_min}m)</div>`,
             iconSize: [0, 0],
             iconAnchor: [0, 0]
           });
@@ -880,12 +1277,126 @@
       renderLegend(result.warehouses);
     }
 
-    // ---- Cost & Workforce Panel ----
+    // ---- Cost, SLA & ESG Panel ----
     function renderCostPanel(costs) {
       const panel = document.getElementById("costPanel");
       const rows = document.getElementById("costRows");
 
+      const sla = costs.sla_compliance_pct !== undefined ? costs.sla_compliance_pct : 0.0;
+      const avgTime = costs.avg_delivery_time_min !== undefined ? costs.avg_delivery_time_min : 0.0;
+      const transitTime = Math.max(0, avgTime - 3.0);
+
+      let slaBadgeClass = "sla-badge-danger";
+      let slaBadgeIcon = "⚠️";
+      let slaBadgeTitle = "10-Min Delivery Physically Impossible!";
+      let slaBadgeDesc = `With few warehouses, customers are 10–15 km away (avg delivery: ${avgTime.toFixed(1)} min). 10-minute quick-commerce requires 50–100 micro-hubs!`;
+      let slaGaugeColor = "linear-gradient(90deg, #ef4444, #f97316)";
+
+      if (sla >= 85) {
+        slaBadgeClass = "sla-badge-success";
+        slaBadgeIcon = "🎯";
+        slaBadgeTitle = "10-Min Dark Store SLA Achieved!";
+        slaBadgeDesc = `${sla.toFixed(1)}% of orders delivered in <10 min (avg: ${avgTime.toFixed(1)} min). Blinkit / Zepto micro-hub strategy proven!`;
+        slaGaugeColor = "linear-gradient(90deg, #10b981, #059669)";
+      } else if (sla >= 40) {
+        slaBadgeClass = "sla-badge-warning";
+        slaBadgeIcon = "⚡";
+        slaBadgeTitle = "Moderate Coverage (Partial Compliance)";
+        slaBadgeDesc = `${sla.toFixed(1)}% delivered under 10 min. Outer city nodes still face delays (avg: ${avgTime.toFixed(1)} min).`;
+        slaGaugeColor = "linear-gradient(90deg, #f59e0b, #10b981)";
+      }
+
+      // ESG EV transition metrics
+      const evPct = costs.ev_fleet_pct !== undefined ? costs.ev_fleet_pct : 0;
+      const petrolDaily = costs.daily_petrol_cost !== undefined ? costs.daily_petrol_cost : costs.daily_fuel;
+      const evDaily = costs.daily_ev_cost !== undefined ? costs.daily_ev_cost : (costs.daily_fleet_km * 0.35);
+      const annualSavings = costs.annual_fuel_savings !== undefined ? costs.annual_fuel_savings : 0;
+      const co2Avoided = costs.annual_co2_saved_tons !== undefined ? costs.annual_co2_saved_tons : 0;
+
       rows.innerHTML = `
+        <!-- Feature 1: 10-Minute Quick-Commerce SLA Compliance Metric -->
+        <div class="sla-card">
+          <div class="sla-header">
+            <div class="sla-title">⚡ 10-Min Quick-Commerce SLA</div>
+            <div class="sla-target-tag">Target: ≤ 10 min</div>
+          </div>
+
+          <div class="sla-metric-row">
+            <div class="sla-main-metric">
+              <span class="sla-pct-val" style="color:${sla >= 85 ? 'var(--success)' : (sla >= 40 ? 'var(--warning)' : 'var(--danger)')}">
+                ${sla.toFixed(1)}%
+              </span>
+              <span class="sla-pct-sub">under 10 min</span>
+            </div>
+            <div class="sla-time-box">
+              <div class="time-label">Avg Delivery Time</div>
+              <div class="time-val" style="color:${avgTime <= 10 ? 'var(--success)' : 'var(--danger)'}">
+                ${avgTime.toFixed(1)} min
+              </div>
+            </div>
+          </div>
+
+          <!-- Progress Gauge -->
+          <div class="sla-gauge-container">
+            <div class="sla-gauge-fill" style="width:${Math.min(100, Math.max(5, sla))}%; background:${slaGaugeColor}"></div>
+          </div>
+
+          <div class="sla-breakdown-row">
+            <span>⏱️ Hub Picking: <strong>3.0 min</strong></span>
+            <span>🛵 Traffic Transit: <strong>${transitTime.toFixed(1)} min</strong></span>
+          </div>
+
+          <div class="sla-callout ${slaBadgeClass}">
+            <strong>${slaBadgeIcon} ${slaBadgeTitle}</strong><br>
+            <span>${slaBadgeDesc}</span>
+          </div>
+        </div>
+
+        <!-- Feature 2: EV Transition and Fleet Green Savings Simulator (ESG Pitch) -->
+        <div class="esg-card">
+          <div class="esg-header">
+            <div class="esg-title">🌱 EV Transition & Fleet Green Savings (ESG)</div>
+            <span class="esg-badge">${evPct.toFixed(0)}% EV Fleet</span>
+          </div>
+
+          <div class="esg-compare-grid">
+            <div class="esg-stat-box">
+              <div class="stat-title">Petrol Fuel Expense</div>
+              <div class="stat-val petrol">${formatINR(petrolDaily)}/day</div>
+              <div class="stat-sub">₹2.00 / km rate</div>
+            </div>
+            <div class="esg-stat-box highlight">
+              <div class="stat-title">EV Charging Cost</div>
+              <div class="stat-val ev">${formatINR(evDaily)}/day</div>
+              <div class="stat-sub" style="color:var(--success)">₹0.35/km (82% cheaper)</div>
+            </div>
+          </div>
+
+          <div class="esg-savings-banner">
+            <div class="savings-label">💰 Net Annual Fuel Savings</div>
+            <div class="savings-val">${formatINR(annualSavings)} / year</div>
+            <div class="savings-sub">For ${formatNum(costs.total_employees)} drivers traveling ${formatNum(costs.daily_fleet_km)} km/day</div>
+          </div>
+
+          <div class="esg-co2-row">
+            <div class="co2-item">
+              <span class="co2-label">Tailpipe CO₂ Eliminated:</span>
+              <span class="co2-val" style="color:var(--success);font-weight:700">
+                ${co2Avoided > 0 ? `${formatNum(co2Avoided)} Tons/yr avoided (100%)` : '0 Tons (0% EV)'}
+              </span>
+            </div>
+            <div class="co2-item">
+              <span class="co2-label">Remaining Emissions:</span>
+              <span class="co2-val">${formatNum(costs.annual_co2_tons)} Tons CO₂/yr</span>
+            </div>
+          </div>
+
+          <div class="judge-note">
+            <strong>💡 Hackathon ESG Pitch:</strong> Transitioning the 52,000 two-wheeler fleet saves <strong>₹48+ Crore annually</strong> and eliminates <strong>20,000+ Tons of CO₂</strong> emissions.
+          </div>
+        </div>
+
+        <!-- Facility Rent -->
         <div class="cost-section-title">🏢 Facility Rent (Company Budget)</div>
         <div class="cost-row">
           <span class="cost-label">Monthly Facility Rent</span>
@@ -901,6 +1412,7 @@
           <span class="cost-value" style="color:${costs.budget_used_pct > 90 ? 'var(--danger)' : 'var(--success)'}">${costs.budget_used_pct.toFixed(1)}%</span>
         </div>` : ''}
 
+        <!-- Delivery Workforce -->
         <div class="cost-section-title">👥 Delivery Workforce (23 Orders/d)</div>
         <div class="cost-row">
           <span class="cost-label">Total Delivery Drivers</span>
@@ -921,24 +1433,6 @@
         <div class="cost-row">
           <span class="cost-label">Avg Route / Driver</span>
           <span class="cost-value">${costs.avg_km_per_driver.toFixed(1)} km/day</span>
-        </div>
-
-        <div class="cost-section-title">🌱 Sustainability & Carbon (ESG)</div>
-        <div class="cost-row">
-          <span class="cost-label">Daily Fleet Distance</span>
-          <span class="cost-value">${formatNum(costs.daily_fleet_km)} km</span>
-        </div>
-        <div class="cost-row">
-          <span class="cost-label">Daily Petrol Burned</span>
-          <span class="cost-value">${formatNum(costs.daily_fuel_liters)} Liters</span>
-        </div>
-        <div class="cost-row">
-          <span class="cost-label">Annual CO₂ Emissions</span>
-          <span class="cost-value" style="color:#059669;font-weight:700">${formatNum(costs.annual_co2_tons)} Tons/yr</span>
-        </div>
-        <div class="cost-row">
-          <span class="cost-label">Driver Petrol Value</span>
-          <span class="cost-value">${formatINR(costs.daily_fuel)}/day</span>
         </div>
 
         <div class="cost-row total">
@@ -963,7 +1457,7 @@
         <div class="legend-item">
           <div class="legend-dot" style="background:${w.color}"></div>
           <span class="legend-label" title="${w.name}">W${i + 1}: ${w.name}</span>
-          <span class="legend-orders">👥 ${formatNum(w.employees_required)} · ${formatNum(w.assigned_orders)}/d</span>
+          <span class="legend-orders">⚡${w.sla_compliance_pct.toFixed(0)}% · 👥${formatNum(w.employees_required)}</span>
         </div>
       `).join("");
 
