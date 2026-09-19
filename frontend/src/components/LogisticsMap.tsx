@@ -40,12 +40,41 @@ interface LogisticsMapProps {
   customPoints?: GridPoint[];
 }
 
-// Controller component to reset view or pan to city center
-function MapViewController({ center, zoom }: { center: [number, number]; zoom: number }) {
+// Controller component to reset view or pan to city center and auto-fit hubs
+function MapViewController({
+  center,
+  zoom,
+  warehouses,
+  resetTrigger,
+}: {
+  center: [number, number];
+  zoom: number;
+  warehouses?: Warehouse[];
+  resetTrigger?: number;
+}) {
   const map = useMap();
+
+  // Invalidate size to guarantee correct canvas dimensions and prevent blank map tiles
   useEffect(() => {
-    map.setView(center, zoom, { animate: true });
-  }, [center, zoom, map]);
+    map.invalidateSize();
+    const t1 = setTimeout(() => map.invalidateSize(), 100);
+    const t2 = setTimeout(() => map.invalidateSize(), 400);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [map]);
+
+  useEffect(() => {
+    const selected = warehouses?.filter((w) => w.isSelected && w.lat && w.lng);
+    if (selected && selected.length > 0) {
+      const bounds = L.latLngBounds(selected.map((w) => [w.lat, w.lng]));
+      map.fitBounds(bounds, { padding: [80, 80], maxZoom: 13, animate: true });
+    } else {
+      map.setView(center, zoom, { animate: true });
+    }
+  }, [center, zoom, map, warehouses, resetTrigger]);
+
   return null;
 }
 
@@ -141,6 +170,7 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({
   const [showSelected, setShowSelected] = useState(true);
   const [showRoutes, setShowRoutes] = useState(true);
   const [isLayerMenuOpen, setIsLayerMenuOpen] = useState(false);
+  const [focusTrigger, setFocusTrigger] = useState(0);
 
   // Raw coordinate dataset for heatmap
   const rawPoints = customPoints && customPoints.length > 0 ? customPoints : BENGALURU_800_POINTS;
@@ -174,6 +204,22 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({
 
         {/* Map Action Buttons */}
         <div className="flex items-center gap-1.5">
+          {/* Fit Hubs Button */}
+          <button
+            onClick={() => setFocusTrigger((prev) => prev + 1)}
+            title="Auto-fit camera to all active warehouse hubs"
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-[#FAF7EF] hover:bg-[#F5F0E4] border border-[#E7E2D4] rounded-lg text-xs font-semibold text-[#292524] transition-colors cursor-pointer shadow-2xs"
+          >
+            <Maximize2 className="w-3.5 h-3.5 text-[#9E471A]" />
+            <span className="hidden sm:inline">Fit Hubs</span>
+          </button>
+
+          {/* Leaflet Spatial Engine Badge */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-semibold shadow-2xs">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Leaflet Map Engine</span>
+          </div>
+
           {/* Layer Toggle Dropdown */}
           <div className="relative">
             <button
@@ -250,14 +296,20 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({
           className="w-full h-full"
           zoomControl={true}
         >
-          {/* Controller to update view on city switch */}
-          <MapViewController center={city.center} zoom={city.zoom} />
+          {/* Controller to update view on city switch and auto-fit hubs */}
+          <MapViewController
+            center={city.center}
+            zoom={city.zoom}
+            warehouses={selectedWarehouses}
+            resetTrigger={focusTrigger}
+          />
 
-          {/* Carto Voyager Warm & Crisp Tiles */}
+          {/* Direct Leaflet Tile Layer */}
           <TileLayer
-            attribution='&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://openstreetmap.org">OpenStreetMap</a>'
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
             url="https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-            maxZoom={18}
+            maxZoom={19}
+            subdomains={['a', 'b', 'c', 'd']}
           />
 
           {/* A. Demand Heatmap: Grid points from dataset */}
@@ -557,6 +609,7 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({
           </p>
         </div>
       </div>
+
     </div>
   );
 };

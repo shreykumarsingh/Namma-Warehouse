@@ -80,6 +80,15 @@ export interface OptimizationConfig {
   priority: OptimizationPriority;
   trafficLevel: TrafficLevel;
   disabledWarehouseIds?: string[];
+  budgetMonthly?: number;
+  budgetMonthlyLakhs?: number;
+  propertySizeSqft?: number;
+  petrolCostPerKm?: number;
+  batchSize?: number;
+  minDispersionKm?: number;
+  maxRadiusKm?: number;
+  useCapacity?: boolean;
+  capacityPerWarehouse?: number;
 }
 
 export interface KPIMetrics {

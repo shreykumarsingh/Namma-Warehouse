@@ -3,8 +3,14 @@ import {
   Sparkles,
   CheckCircle2,
   Sliders,
-  ChevronDown,
   RotateCcw,
+  IndianRupee,
+  Maximize,
+  Fuel,
+  Package,
+  Compass,
+  Building2,
+  Layers,
 } from 'lucide-react';
 import {
   OptimizationConfig,
@@ -33,36 +39,44 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = ({
   lastResult,
   onReset,
 }) => {
-  const [activeTab, setActiveTab] = useState<'basic' | 'advanced' | 'scenario'>('basic');
-
-  const priorityOptions: { id: OptimizationPriority; label: string }[] = [
-    { id: 'cost', label: 'Cost Focused' },
-    { id: 'speed', label: 'Speed (<25m)' },
-    { id: 'sustainability', label: 'Eco / Low Carbon' },
-    { id: 'balanced', label: 'Balanced Optimum' },
-  ];
+  const [activeTab, setActiveTab] = useState<'parameters' | 'advanced' | 'scenarios'>('parameters');
 
   const stepsList = [
-    'Analyzing demand zones & traffic...',
-    'Calculating spatial transport costs...',
-    'Evaluating candidate warehouse footprints...',
-    'Generating optimal network...',
+    'Submitting 5 parameters to Discrete Spatial Solver...',
+    'Querying BBMP municipal road network & 800 candidate nodes...',
+    'Enforcing D_min spatial dispersion & budget constraints...',
+    'Computing 3-delivery milk-run routes & fuel burn...',
+    'Generating optimal hub locations...',
   ];
+
+  // Derive current 5 parameter values with fallbacks
+  const budgetLakhs =
+    config.budgetMonthlyLakhs !== undefined
+      ? config.budgetMonthlyLakhs
+      : config.budgetMonthly
+      ? Number((config.budgetMonthly / 100000).toFixed(1))
+      : 15.0;
+
+  const propertySize = config.propertySizeSqft ?? 2500;
+  const petrolCost = config.petrolCostPerKm ?? 2.0;
+  const batchSize = config.batchSize ?? 3;
+  const minDispersion = config.minDispersionKm ?? 6.5;
+  const numHubs = config.maxWarehouses ?? 3;
 
   return (
     <div className="bg-white rounded-2xl border border-[#E8E0CE] shadow-xs flex flex-col h-full overflow-hidden">
       {/* Panel Header */}
-      <div className="p-5 border-b border-[#E8E0CE] flex items-center justify-between shrink-0 bg-[#FAF5E8]/60">
+      <div className="p-4 sm:p-5 border-b border-[#E8E0CE] flex items-center justify-between shrink-0 bg-[#FAF5E8]/70">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-[#FAF3E3] border border-[#EFE5D0] flex items-center justify-center text-[#9E471A] shadow-2xs">
+          <div className="w-9 h-9 rounded-xl bg-[#9E471A] text-white flex items-center justify-center shadow-xs">
             <Sliders className="w-4 h-4" />
           </div>
           <div>
             <h3 className="font-bold text-sm sm:text-base text-[#1F1A16] font-serif">
-              Optimization Controls
+              Facility Optimization Controls
             </h3>
             <p className="text-[11px] text-[#7A7168]">
-              P-Median facility location parameters
+              5-Parameter Discrete Spatial Solver
             </p>
           </div>
         </div>
@@ -70,114 +84,310 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = ({
         <div className="flex items-center gap-2">
           <button
             onClick={onReset}
-            className="inline-flex items-center gap-1 text-xs text-[#7A7168] hover:text-[#1F1A16] px-2.5 py-1.5 rounded-lg hover:bg-white border border-transparent hover:border-[#E8E0CE] transition-all"
-            title="Reset to baseline"
+            className="inline-flex items-center gap-1 text-xs text-[#7A7168] hover:text-[#1F1A16] px-2.5 py-1.5 rounded-lg hover:bg-white border border-transparent hover:border-[#E8E0CE] transition-all cursor-pointer"
+            title="Reset parameters to baseline"
           >
             <RotateCcw className="w-3 h-3" />
-            <span>Reset</span>
+            <span className="hidden sm:inline">Reset</span>
           </button>
         </div>
       </div>
 
-      {/* Tabs: Basic, Advanced, Scenario */}
-      <div className="flex border-b border-[#E8E0CE] bg-[#FAF5E8]/40 p-2 gap-2 text-xs">
-        {(['basic', 'advanced', 'scenario'] as const).map((tab) => (
-          <button
-            key={tab}
-            id={`optimization-tab-${tab}`}
-            onClick={() => setActiveTab(tab)}
-            className={`flex-1 py-2 px-3 font-bold text-center rounded-xl transition-all capitalize text-xs ${
-              activeTab === tab
-                ? 'bg-[#FDE89C] text-[#3D270C] shadow-2xs border border-amber-300'
-                : 'text-[#7A7168] hover:text-[#1F1A16] hover:bg-white/70'
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
+      {/* Tabs */}
+      <div className="flex border-b border-[#E8E0CE] bg-[#FAF5E8]/40 p-2 gap-1.5 text-xs">
+        <button
+          onClick={() => setActiveTab('parameters')}
+          className={`flex-1 py-2 px-3 font-bold text-center rounded-xl transition-all capitalize text-xs cursor-pointer ${
+            activeTab === 'parameters'
+              ? 'bg-[#FDE89C] text-[#3D270C] shadow-2xs border border-amber-300'
+              : 'text-[#7A7168] hover:text-[#1F1A16] hover:bg-white/70'
+          }`}
+        >
+          5 Core Parameters
+        </button>
+        <button
+          onClick={() => setActiveTab('advanced')}
+          className={`flex-1 py-2 px-3 font-bold text-center rounded-xl transition-all capitalize text-xs cursor-pointer ${
+            activeTab === 'advanced'
+              ? 'bg-[#FDE89C] text-[#3D270C] shadow-2xs border border-amber-300'
+              : 'text-[#7A7168] hover:text-[#1F1A16] hover:bg-white/70'
+          }`}
+        >
+          Network Constraints
+        </button>
+        <button
+          onClick={() => setActiveTab('scenarios')}
+          className={`flex-1 py-2 px-3 font-bold text-center rounded-xl transition-all capitalize text-xs cursor-pointer ${
+            activeTab === 'scenarios'
+              ? 'bg-[#FDE89C] text-[#3D270C] shadow-2xs border border-amber-300'
+              : 'text-[#7A7168] hover:text-[#1F1A16] hover:bg-white/70'
+          }`}
+        >
+          What-If Stress Test
+        </button>
       </div>
 
-      {/* Form Content with comfortable spacing */}
-      <div className="p-5 space-y-5 overflow-y-auto flex-1 text-xs">
-        {activeTab === 'basic' && (
-          <>
-            {/* City / Area Dropdown */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-[#5C5248] block">
-                Target Logistics Region
-              </label>
-              <div className="relative">
-                <select
-                  disabled
-                  className="w-full bg-[#FAF5E8]/90 border border-[#E8E0CE] rounded-xl px-3.5 py-2.5 text-xs font-bold text-[#1F1A16] appearance-none cursor-pointer focus:outline-none"
-                  defaultValue="Bengaluru"
-                >
-                  <option value="Bengaluru">Bengaluru Central & BBMP Urban Zone (800 Nodes)</option>
-                </select>
-                <ChevronDown className="w-4 h-4 text-[#7A7168] absolute right-3.5 top-3 pointer-events-none" />
+      {/* Form Content */}
+      <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1 text-xs">
+        {activeTab === 'parameters' && (
+          <div className="space-y-4.5">
+            {/* PARAMETER 1: Monthly Budget in Lakhs */}
+            <div className="p-3 bg-[#FAF5E8]/50 rounded-xl border border-[#E8DFC9] space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-[#1F1A16] flex items-center gap-1.5">
+                  <IndianRupee className="w-3.5 h-3.5 text-[#9E471A]" />
+                  <span>1. Monthly Budget (in ₹ Lakhs)</span>
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    min="3"
+                    max="100"
+                    step="0.5"
+                    value={budgetLakhs}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value) || 0;
+                      onChangeConfig({
+                        budgetMonthlyLakhs: val,
+                        budgetMonthly: val * 100000,
+                      });
+                    }}
+                    className="w-16 px-2 py-0.5 text-right font-mono font-bold text-xs bg-white border border-[#E8E0CE] rounded-md text-[#9E471A]"
+                  />
+                  <span className="text-[11px] font-bold text-[#7A7168]">L / mo</span>
+                </div>
+              </div>
+              <input
+                type="range"
+                min="3"
+                max="50"
+                step="0.5"
+                value={budgetLakhs}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  onChangeConfig({
+                    budgetMonthlyLakhs: val,
+                    budgetMonthly: val * 100000,
+                  });
+                }}
+                className="w-full accent-[#9E471A] cursor-pointer h-2 bg-[#E8DEC7] rounded-lg"
+              />
+              <div className="flex items-center justify-between text-[10px] text-[#A8A29E]">
+                <span>₹ 3 L</span>
+                <span>₹ 15 L (Baseline)</span>
+                <span>₹ 30 L</span>
+                <span>₹ 50 L</span>
               </div>
             </div>
 
-            {/* Daily Demand */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <label className="text-xs font-semibold text-[#5C5248]">
-                  Daily Demand Volume
+            {/* PARAMETER 2: Property Size in sq.ft */}
+            <div className="p-3 bg-[#FAF5E8]/50 rounded-xl border border-[#E8DFC9] space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-[#1F1A16] flex items-center gap-1.5">
+                  <Maximize className="w-3.5 h-3.5 text-[#9E471A]" />
+                  <span>2. Property Size (sq.ft)</span>
                 </label>
-                <span className="font-bold text-[#1F1A16] text-xs font-mono bg-[#FAF5E8] px-2.5 py-1 rounded-md border border-[#E8E0CE]">
-                  {Math.round(15000 * config.demandMultiplier).toLocaleString()} orders/day
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    min="500"
+                    max="15000"
+                    step="250"
+                    value={propertySize}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value) || 1000;
+                      onChangeConfig({ propertySizeSqft: val });
+                    }}
+                    className="w-20 px-2 py-0.5 text-right font-mono font-bold text-xs bg-white border border-[#E8E0CE] rounded-md text-[#9E471A]"
+                  />
+                  <span className="text-[11px] font-bold text-[#7A7168]">sq.ft</span>
+                </div>
+              </div>
+              <input
+                type="range"
+                min="500"
+                max="10000"
+                step="250"
+                value={propertySize}
+                onChange={(e) => onChangeConfig({ propertySizeSqft: parseFloat(e.target.value) })}
+                className="w-full accent-[#9E471A] cursor-pointer h-2 bg-[#E8DEC7] rounded-lg"
+              />
+              <div className="flex items-center justify-between text-[10px] text-[#A8A29E]">
+                <span>500 sq.ft</span>
+                <span>2,500 sq.ft (Standard)</span>
+                <span>5,000 sq.ft</span>
+                <span>10,000 sq.ft</span>
+              </div>
+            </div>
+
+            {/* PARAMETER 3: Petrol Cost per km */}
+            <div className="p-3 bg-[#FAF5E8]/50 rounded-xl border border-[#E8DFC9] space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-[#1F1A16] flex items-center gap-1.5">
+                  <Fuel className="w-3.5 h-3.5 text-[#9E471A]" />
+                  <span>3. Petrol Cost (₹ / km)</span>
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    min="0.5"
+                    max="10"
+                    step="0.1"
+                    value={petrolCost}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value) || 1.0;
+                      onChangeConfig({ petrolCostPerKm: val });
+                    }}
+                    className="w-16 px-2 py-0.5 text-right font-mono font-bold text-xs bg-white border border-[#E8E0CE] rounded-md text-[#9E471A]"
+                  />
+                  <span className="text-[11px] font-bold text-[#7A7168]">₹ / km</span>
+                </div>
               </div>
               <input
                 type="range"
                 min="0.5"
-                max="2.0"
+                max="8.0"
                 step="0.1"
-                value={config.demandMultiplier}
-                onChange={(e) => onChangeConfig({ demandMultiplier: Number(e.target.value) })}
+                value={petrolCost}
+                onChange={(e) => onChangeConfig({ petrolCostPerKm: parseFloat(e.target.value) })}
                 className="w-full accent-[#9E471A] cursor-pointer h-2 bg-[#E8DEC7] rounded-lg"
               />
-              <div className="flex justify-between text-[11px] text-[#A8A29E]">
-                <span>7,500 (Low)</span>
-                <span>15,000 (Baseline)</span>
-                <span>30,000 (Peak Surge)</span>
+              <div className="flex items-center justify-between text-[10px] text-[#A8A29E]">
+                <span>₹ 0.5/km (EV)</span>
+                <span>₹ 2.0/km (Standard 2W)</span>
+                <span>₹ 5.0/km (Van)</span>
+                <span>₹ 8.0/km</span>
               </div>
             </div>
 
-            {/* Max Warehouses */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <label className="text-xs font-semibold text-[#5C5248]">
-                  Max Allowed Warehouses (p)
+            {/* PARAMETER 4: Deliveries per Trip */}
+            <div className="p-3 bg-[#FAF5E8]/50 rounded-xl border border-[#E8DFC9] space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-[#1F1A16] flex items-center gap-1.5">
+                  <Package className="w-3.5 h-3.5 text-[#9E471A]" />
+                  <span>4. Deliveries per Trip (Batch Size)</span>
                 </label>
-                <span className="font-bold text-[#1F1A16] text-xs font-mono bg-[#FAF5E8] px-2.5 py-1 rounded-md border border-[#E8E0CE]">
-                  {config.maxWarehouses} Warehouses
+                <span className="font-mono font-bold text-xs bg-white border border-[#E8E0CE] px-2.5 py-0.5 rounded-md text-[#9E471A]">
+                  {batchSize} drops / trip
                 </span>
               </div>
               <input
                 type="range"
                 min="1"
-                max="6"
+                max="10"
                 step="1"
-                value={config.maxWarehouses}
-                onChange={(e) => onChangeConfig({ maxWarehouses: Number(e.target.value) })}
+                value={batchSize}
+                onChange={(e) => onChangeConfig({ batchSize: parseInt(e.target.value, 10) })}
                 className="w-full accent-[#9E471A] cursor-pointer h-2 bg-[#E8DEC7] rounded-lg"
               />
-              <div className="flex justify-between text-[11px] text-[#A8A29E]">
-                <span>1 Hub</span>
-                <span>3 (Optimal Frontier)</span>
-                <span>6 Hubs</span>
+              <div className="grid grid-cols-5 gap-1 pt-1">
+                {[1, 2, 3, 5, 8].map((b) => (
+                  <button
+                    key={b}
+                    type="button"
+                    onClick={() => onChangeConfig({ batchSize: b })}
+                    className={`py-1 text-[11px] font-semibold rounded-lg border transition-all cursor-pointer ${
+                      batchSize === b
+                        ? 'bg-[#9E471A] text-white border-[#9E471A] shadow-2xs'
+                        : 'bg-white text-[#5C5248] border-[#E8E0CE] hover:bg-[#FAF5E8]'
+                    }`}
+                  >
+                    {b} {b === 1 ? 'drop' : 'drops'}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* Max Delivery Time */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <label className="text-xs font-semibold text-[#5C5248]">
-                  Target Max Delivery Time (SLA)
+            {/* PARAMETER 5: Minimum Hub Separation (km) */}
+            <div className="p-3 bg-[#FAF5E8]/50 rounded-xl border border-[#E8DFC9] space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-[#1F1A16] flex items-center gap-1.5">
+                  <Compass className="w-3.5 h-3.5 text-[#9E471A]" />
+                  <span>5. Minimum Hub Separation (km)</span>
                 </label>
-                <span className="font-bold text-[#1F1A16] text-xs font-mono bg-[#FAF5E8] px-2.5 py-1 rounded-md border border-[#E8E0CE]">
-                  {config.maxDeliveryTime} min
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    step="0.5"
+                    value={minDispersion}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value) || 2.0;
+                      onChangeConfig({ minDispersionKm: val });
+                    }}
+                    className="w-16 px-2 py-0.5 text-right font-mono font-bold text-xs bg-white border border-[#E8E0CE] rounded-md text-[#9E471A]"
+                  />
+                  <span className="text-[11px] font-bold text-[#7A7168]">km</span>
+                </div>
+              </div>
+              <input
+                type="range"
+                min="1.0"
+                max="15.0"
+                step="0.5"
+                value={minDispersion}
+                onChange={(e) => onChangeConfig({ minDispersionKm: parseFloat(e.target.value) })}
+                className="w-full accent-[#9E471A] cursor-pointer h-2 bg-[#E8DEC7] rounded-lg"
+              />
+              <div className="flex items-center justify-between text-[10px] text-[#A8A29E]">
+                <span>1.0 km (Dense)</span>
+                <span>6.5 km (Optimal Dispersion)</span>
+                <span>12.0 km</span>
+                <span>15.0 km</span>
+              </div>
+              <p className="text-[10.5px] text-[#7A7168] leading-tight pt-0.5">
+                Enforces spatial dispersion ($D_{'{min}'}$) so warehouses do not clump in the same neighborhood.
+              </p>
+            </div>
+
+            {/* Hub Count (p) */}
+            <div className="p-3 bg-white rounded-xl border border-[#E8DFC9] space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-[#1F1A16] flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-[#9E471A]" />
+                  <span>Number of Hubs to Place (p)</span>
+                </label>
+                <span className="font-mono font-bold text-xs text-[#9E471A] bg-[#FAF5E8] px-2 py-0.5 rounded border border-[#E8DFC9]">
+                  {numHubs} Hubs
+                </span>
+              </div>
+              <div className="grid grid-cols-6 gap-1.5">
+                {[1, 2, 3, 4, 5, 6].map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => onChangeConfig({ maxWarehouses: p })}
+                    className={`py-1.5 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
+                      numHubs === p
+                        ? 'bg-[#9E471A] text-white border-[#9E471A] shadow-xs'
+                        : 'bg-[#FAF5E8]/60 text-[#5C5248] border-[#E8E0CE] hover:bg-white'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'advanced' && (
+          <div className="space-y-4">
+            <div className="p-3 bg-[#FAF5E8] rounded-xl border border-[#E8DFC9] space-y-2">
+              <span className="font-bold text-[#1F1A16] block">Mappls Spatial Road Network</span>
+              <p className="text-[#5C5248] leading-relaxed text-[11px]">
+                Calculates actual road distances with 1.4x circuity factor and dynamic urban corridor traffic delays across 800 discrete BBMP nodes.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-[#5C5248] block">
+                Target Max Delivery SLA
+              </label>
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-[#1F1A16] font-mono">
+                  {config.maxDeliveryTime} minutes
                 </span>
               </div>
               <input
@@ -189,47 +399,19 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = ({
                 onChange={(e) => onChangeConfig({ maxDeliveryTime: Number(e.target.value) })}
                 className="w-full accent-[#9E471A] cursor-pointer h-2 bg-[#E8DEC7] rounded-lg"
               />
-              <div className="flex justify-between text-[11px] text-[#A8A29E]">
-                <span>20 min (Hyperlocal)</span>
-                <span>35 min</span>
-                <span>50 min</span>
-              </div>
             </div>
 
-            {/* Fuel Price */}
             <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <label className="text-xs font-semibold text-[#5C5248]">Commercial Fuel Rate</label>
-                <span className="font-bold text-[#1F1A16] text-xs font-mono bg-[#FAF5E8] px-2.5 py-1 rounded-md border border-[#E8E0CE]">
-                  ₹ {Math.round(config.fuelPrice)} / Liter
-                </span>
-              </div>
-              <input
-                type="range"
-                min="85"
-                max="120"
-                step="1"
-                value={config.fuelPrice}
-                onChange={(e) => onChangeConfig({ fuelPrice: Number(e.target.value) })}
-                className="w-full accent-[#9E471A] cursor-pointer h-2 bg-[#E8DEC7] rounded-lg"
-              />
-            </div>
-
-            {/* Traffic Level */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <label className="text-xs font-semibold text-[#5C5248]">Corridor Congestion</label>
-                <span className="capitalize font-bold text-xs text-[#9E471A]">
-                  {config.trafficLevel} Level
-                </span>
-              </div>
+              <label className="text-xs font-semibold text-[#5C5248] block">
+                Congestion Level
+              </label>
               <div className="grid grid-cols-3 gap-2">
                 {(['low', 'medium', 'high'] as TrafficLevel[]).map((lvl) => (
                   <button
                     key={lvl}
                     type="button"
                     onClick={() => onChangeConfig({ trafficLevel: lvl })}
-                    className={`py-2 text-center rounded-xl border capitalize text-xs font-bold transition-all ${
+                    className={`py-2 text-center rounded-xl border capitalize text-xs font-bold transition-all cursor-pointer ${
                       config.trafficLevel === lvl
                         ? 'bg-[#FDE89C] text-[#3D270C] border-amber-400 shadow-2xs'
                         : 'border-[#E8E0CE] bg-[#FAF5E8]/60 text-[#7A7168] hover:bg-[#FAF5E8]'
@@ -240,114 +422,72 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = ({
                 ))}
               </div>
             </div>
-
-            {/* Optimization Priority */}
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-[#5C5248] block">
-                Mathematical Objective Focus
-              </label>
-              <div className="grid grid-cols-2 gap-2.5">
-                {priorityOptions.map((opt) => {
-                  const isSelected = config.priority === opt.id;
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => onChangeConfig({ priority: opt.id })}
-                      className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-left transition-all ${
-                        isSelected
-                          ? 'border-[#9E471A] bg-[#FAF3E3] text-[#3D270C] font-bold shadow-2xs'
-                          : 'border-[#E8E0CE] bg-white text-[#5C5248] hover:bg-[#FAF5E8]'
-                      }`}
-                    >
-                      <div
-                        className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                          isSelected
-                            ? 'border-[#9E471A] bg-[#9E471A]'
-                            : 'border-stone-400 bg-white'
-                        }`}
-                      >
-                        {isSelected && <div className="w-1.5 h-1.5 bg-white rounded-full"></div>}
-                      </div>
-                      <span className="text-xs">{opt.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </>
-        )}
-
-        {activeTab === 'advanced' && (
-          <div className="space-y-4">
-            <div className="p-3.5 bg-[#FAF5E8] rounded-xl border border-[#E8E0CE] text-xs text-[#5C5248] space-y-1.5">
-              <span className="font-bold text-[#1F1A16] block">P-Median Formulation</span>
-              <p className="leading-relaxed">
-                Minimizes weighted transport distances subject to warehouse lease rates from BBMP ward records.
-              </p>
-            </div>
-            <div className="p-3.5 bg-white rounded-xl border border-[#E8E0CE] text-xs space-y-1.5">
-              <span className="font-semibold text-[#1F1A16] block">Emission Standard</span>
-              <p className="text-[#7A7168] leading-relaxed">
-                2.68 kg CO₂ per liter of commercial diesel with regenerative EV fleet offsets.
-              </p>
-            </div>
           </div>
         )}
 
-        {activeTab === 'scenario' && (
+        {activeTab === 'scenarios' && (
           <div className="space-y-3">
             <button
-              onClick={() => onChangeConfig({ demandMultiplier: 1.4 })}
-              className="w-full p-3.5 bg-[#FAF5E8] hover:bg-[#FAF3E3] border border-[#E8E0CE] rounded-xl text-left transition-colors"
+              onClick={() => {
+                onChangeConfig({
+                  budgetMonthlyLakhs: 20.0,
+                  petrolCostPerKm: 2.5,
+                  minDispersionKm: 8.0,
+                  maxWarehouses: 4,
+                });
+              }}
+              className="w-full p-3.5 bg-[#FAF5E8] hover:bg-[#FAF3E3] border border-[#E8E0CE] rounded-xl text-left transition-colors cursor-pointer"
             >
               <div className="font-bold text-[#1F1A16] flex justify-between text-xs">
-                <span>Diwali Festive Surge</span>
-                <span className="text-amber-900 text-[11px] bg-[#FDE89C] px-2 py-0.5 rounded font-bold">+40%</span>
+                <span>Diwali Festival Expansion</span>
+                <span className="text-amber-900 text-[11px] bg-[#FDE89C] px-2 py-0.5 rounded font-bold">Preset</span>
               </div>
-              <p className="text-[11px] text-[#7A7168] mt-1">High festive demand spike across all wards.</p>
+              <p className="text-[11px] text-[#7A7168] mt-1">
+                Budget ₹20L • 4 Hubs • 8.0km Separation
+              </p>
             </button>
+
             <button
-              onClick={() => onChangeConfig({ trafficLevel: 'high' })}
-              className="w-full p-3.5 bg-[#FAF5E8] hover:bg-[#FAF3E3] border border-[#E8E0CE] rounded-xl text-left transition-colors"
+              onClick={() => {
+                onChangeConfig({
+                  budgetMonthlyLakhs: 10.0,
+                  propertySizeSqft: 2000,
+                  batchSize: 4,
+                  minDispersionKm: 5.0,
+                  maxWarehouses: 2,
+                });
+              }}
+              className="w-full p-3.5 bg-[#FAF5E8] hover:bg-[#FAF3E3] border border-[#E8E0CE] rounded-xl text-left transition-colors cursor-pointer"
             >
               <div className="font-bold text-[#1F1A16] flex justify-between text-xs">
-                <span>Monsoon Waterlogging</span>
-                <span className="text-amber-900 text-[11px] bg-[#FDE89C] px-2 py-0.5 rounded font-bold">Severe</span>
+                <span>Lean Quick-Commerce Hubs</span>
+                <span className="text-emerald-900 text-[11px] bg-emerald-100 px-2 py-0.5 rounded font-bold">Lean</span>
               </div>
-              <p className="text-[11px] text-[#7A7168] mt-1">Silk Board & Bellandur corridor congestion.</p>
-            </button>
-            <button
-              onClick={() => onChangeConfig({ disabledWarehouseIds: ['W3'] })}
-              className="w-full p-3.5 bg-red-50/70 hover:bg-red-50 border border-red-200 rounded-xl text-left transition-colors"
-            >
-              <div className="font-bold text-red-950 flex justify-between text-xs">
-                <span>Whitefield Hub Outage</span>
-                <span className="text-red-800 text-[11px] bg-red-100 px-2 py-0.5 rounded font-bold">Simulate</span>
-              </div>
-              <p className="text-[11px] text-red-700 mt-1">Simulates hub shutdown and automated re-routing.</p>
+              <p className="text-[11px] text-[#7A7168] mt-1">
+                Budget ₹10L • 2 Hubs • 2,000 sq.ft • 4 drops/trip
+              </p>
             </button>
           </div>
         )}
       </div>
 
-      {/* Button: Run Optimization */}
-      <div className="p-5 border-t border-[#E8E0CE] bg-[#FAF5E8]/60 shrink-0 space-y-2.5">
+      {/* Button: Generate Hub Locations */}
+      <div className="p-4 sm:p-5 border-t border-[#E8E0CE] bg-[#FAF5E8]/70 shrink-0 space-y-2.5">
         {isOptimizing ? (
           <div className="p-3 bg-white rounded-xl border border-amber-300 shadow-2xs space-y-2">
             <div className="flex items-center justify-between text-xs font-bold text-amber-900">
               <span className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
-                SOLVING NETWORK OPTIMIZATION...
+                OPTIMIZING FACILITY LOCATIONS...
               </span>
               <span className="font-mono text-xs">
-                {Math.min(100, Math.round(((stepIndex + 1) / 4) * 100))}%
+                {Math.min(100, Math.round(((stepIndex + 1) / stepsList.length) * 100))}%
               </span>
             </div>
             <div className="w-full bg-[#E8DEC7] h-2 rounded-full overflow-hidden">
               <div
                 className="h-full bg-[#9E471A] transition-all duration-300"
-                style={{ width: `${Math.min(100, ((stepIndex + 1) / 4) * 100)}%` }}
+                style={{ width: `${Math.min(100, ((stepIndex + 1) / stepsList.length) * 100)}%` }}
               />
             </div>
             <p className="text-xs text-[#7A7168] truncate">{stepsList[stepIndex]}</p>
@@ -359,7 +499,7 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = ({
             className="w-full py-3.5 px-5 bg-gradient-to-r from-[#9E471A] via-[#8F3E15] to-[#7B3410] hover:from-[#8A3B12] hover:to-[#6F2E0D] text-white font-bold text-xs sm:text-sm rounded-xl shadow-md hover:shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2 uppercase tracking-wider cursor-pointer"
           >
             <Sparkles className="w-4 h-4 text-amber-300" />
-            <span>Optimize Logistics Network</span>
+            <span>Generate Hub Locations</span>
           </button>
         )}
 

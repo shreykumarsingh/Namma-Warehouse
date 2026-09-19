@@ -350,38 +350,43 @@ The project includes an interactive web interface served at `http://127.0.0.1:80
 ## 🚀 Installation & Getting Started
 
 ### Prerequisites
-- Python 3.9+ installed
-- Node.js 18+ (if developing on the React frontend)
+- **Node.js**: v18.0 or higher (`npm` installed)
+- **Python**: 3.10+ (`pip` installed)
 
-### 1. Launching the Backend Optimizer
-```bash
-# Navigate to backend folder
-cd backend
+---
 
-# Install Python requirements
-pip install -r requirements.txt
+### One-Click Launch (Windows PowerShell)
 
-# Start FastAPI development server
-python -m uvicorn app:app --host 127.0.0.1 --port 8000 --reload
+In the project root, run:
+```powershell
+.\run.ps1
 ```
-The backend will immediately initialize, loading all 800 discrete nodes and pre-computing the road distance and traffic matrices.
+This opens both the FastAPI Backend (port 8000) and Vite Frontend (port 3000) in separate terminals.
 
-### 2. Accessing the Applications
-- **Interactive Map Visualizer**: Open [http://127.0.0.1:8000/app](http://127.0.0.1:8000/app) in any browser.
-- **Swagger Interactive API Documentation**: Open [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs).
-- **Health Check**: Open [http://127.0.0.1:8000/](http://127.0.0.1:8000/).
+---
 
-### 3. Running the React Frontend (Optional)
+### Manual Launch (Two Terminals)
+
+#### Terminal 1: Start Python FastAPI Backend
 ```bash
-# Navigate to frontend folder
+# From project root
+cd backend
+python -m pip install -r requirements.txt
+python -m uvicorn app:app --port 8000 --reload
+```
+Backend will be live at `http://127.0.0.1:8000` (API Docs: `http://127.0.0.1:8000/docs`).
+
+#### Terminal 2: Start React + Vite Frontend
+```bash
+# From project root
 cd frontend
-
-# Install dependencies
 npm install
-
-# Launch Vite dev server
 npm run dev
 ```
+Frontend will be live at `http://localhost:3000`.
+
+The frontend automatically proxies `/api` calls to the FastAPI backend at `http://127.0.0.1:8000`.
+A live indicator in the header will display **"FastAPI: Online"** with a pulsing green badge.
 
 ---
 

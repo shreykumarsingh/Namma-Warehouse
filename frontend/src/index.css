@@ -34,6 +34,14 @@
   background: #ffffff;
 }
 
+/* Fix leaflet div icon default box styling */
+.leaflet-div-icon,
+.custom-warehouse-marker,
+.custom-zone-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
 /* Custom clean scrollbars */
 ::-webkit-scrollbar {
   width: 6px;

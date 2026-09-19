@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FeaturesDrawer } from './components/FeaturesDrawer';
 import { TopHeader } from './components/TopHeader';
 import { DashboardPage } from './pages/DashboardPage';
@@ -64,6 +64,37 @@ export function App() {
       timestamp: 'Yesterday',
     },
   ]);
+
+  // Initial backend health probe & live optimization fetch
+  useEffect(() => {
+    let isMounted = true;
+    async function initBackend() {
+      try {
+        const status = await api.checkBackendHealth();
+        if (status.online && isMounted) {
+          const freshResult = await api.optimizeNetwork(config);
+          if (isMounted) {
+            setResult(freshResult);
+            setEvents((prev) => [
+              {
+                id: `evt-init-${Date.now()}`,
+                type: 'system',
+                message: 'FastAPI Spatial Optimization Engine active • 800 discrete nodes loaded',
+                timestamp: 'Just now',
+              },
+              ...prev.slice(0, 4),
+            ]);
+          }
+        }
+      } catch (err) {
+        console.warn('Backend auto-connection error:', err);
+      }
+    }
+    initBackend();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Execute optimization
   const handleRunOptimization = async () => {

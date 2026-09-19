@@ -65,16 +65,14 @@ def root():
 @app.get("/app", summary="Visualization Frontend")
 def serve_frontend():
     """Serves the GRIDPOINT interactive map visualization."""
-    index_path = os.path.join(BASE_DIR, "index.html")
-    return FileResponse(
-        index_path,
-        media_type="text/html",
-        headers={
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Pragma": "no-cache",
-            "Expires": "0"
-        }
-    )
+    for cand in [
+        os.path.join(BASE_DIR, "frontend", "dist", "index.html"),
+        os.path.join(BASE_DIR, "frontend", "index.html"),
+        os.path.join(BASE_DIR, "index.html"),
+    ]:
+        if os.path.exists(cand):
+            return FileResponse(cand, media_type="text/html")
+    return {"message": "Frontend build not found. Please run 'npm run dev' inside frontend directory."}
 
 @app.get("/api/city", response_model=CityResponse, summary="Fetch City Grid & Metadata")
 def get_city():
@@ -102,10 +100,7 @@ def optimize_network(req: OptimizeRequest):
         min_dispersion_km=req.min_dispersion_km,
         max_radius_km=req.max_radius_km,
         use_capacity=req.use_capacity,
-        capacity_per_warehouse=req.capacity_per_warehouse,
-        ev_fleet_pct=req.ev_fleet_pct,
-        picking_time_min=req.picking_time_min,
-        target_sla_minutes=req.target_sla_minutes
+        capacity_per_warehouse=req.capacity_per_warehouse
     )
     return result
 
@@ -114,7 +109,7 @@ def get_tradeoff(
     budget_monthly: Optional[float] = Query(None, description="Monthly rent budget"),
     property_size_sqft: float = Query(2500.0, description="Warehouse size in sq.ft"),
     petrol_cost_per_km: float = Query(2.0, description="Fuel cost rate"),
-    batch_size: int = Query(23, description="Deliveries per driver per day (default: 23)"),
+    batch_size: int = Query(3, description="Deliveries per trip"),
     min_dispersion_km: float = Query(6.5, description="Min separation distance between hubs in km")
 ):
     """

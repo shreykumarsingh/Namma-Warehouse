@@ -1,5 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { api, BackendStatus } from '../services/api';
 import {
   Bell,
   Sparkles,
@@ -84,7 +85,14 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   const [showNotifications, setShowNotifications] = useState(false);
   const [truckHonked, setTruckHonked] = useState(false);
   const [isFeaturesHovered, setIsFeaturesHovered] = useState(false);
+  const [backendStatus, setBackendStatus] = useState<BackendStatus>(() => api.getBackendStatus());
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    const unsub = api.onStatusChange((s) => setBackendStatus(s));
+    api.checkBackendHealth();
+    return () => unsub();
+  }, []);
 
   const handleMouseEnter = () => {
     if (hoverTimeoutRef.current) {
@@ -483,8 +491,37 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
               </AnimatePresence>
             </div>
 
-            {/* Right side: Tour button, Notification Bell, BLR Avatar badge */}
-            <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+            {/* Right side: Backend Badge, Tour button, Notification Bell, BLR Avatar badge */}
+            <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+              {/* Backend Status Indicator */}
+              <button
+                onClick={() => api.checkBackendHealth()}
+                title={
+                  backendStatus.online
+                    ? 'FastAPI Spatial Optimization Backend is ONLINE (Click to re-check)'
+                    : 'FastAPI Backend is offline (Click to retry connection)'
+                }
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer shadow-2xs ${
+                  backendStatus.online
+                    ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
+                    : 'bg-[#FAF5E8] hover:bg-stone-100 text-stone-600 border-[#E8DFC9]'
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    backendStatus.online
+                      ? 'bg-emerald-500 animate-pulse'
+                      : 'bg-stone-400'
+                  }`}
+                />
+                <span className="hidden sm:inline">
+                  {backendStatus.online ? 'FastAPI: Online' : 'Backend: Offline'}
+                </span>
+                <span className="sm:hidden">
+                  {backendStatus.online ? 'Online' : 'Offline'}
+                </span>
+              </button>
+
               {/* Quick Demo Tour */}
               <button
                 onClick={onOpenDemoTour}
