@@ -6,6 +6,8 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 
+from fastapi.staticfiles import StaticFiles
+
 from schemas import (
     OptimizeRequest,
     OptimizeResponse,
@@ -52,6 +54,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount React 19 Frontend Dashboard if compiled
+FRONTEND_DIST = os.path.join(BASE_DIR, "frontend", "dist")
+if os.path.exists(FRONTEND_DIST):
+    app.mount("/dashboard", StaticFiles(directory=FRONTEND_DIST, html=True), name="dashboard")
+
 @app.get("/", summary="Health Check")
 def root():
     return {
@@ -59,20 +66,22 @@ def root():
         "service": "GRIDPOINT Discrete Spatial Optimization API",
         "version": "2.0.0",
         "method": "Discrete Capacitated Facility Location with Spatial Dispersion",
-        "endpoints": ["/app", "/api/city", "/api/optimize", "/api/tradeoff", "/docs"]
+        "endpoints": ["/dashboard", "/app", "/api/city", "/api/optimize", "/api/tradeoff", "/docs"]
     }
 
 @app.get("/app", summary="Visualization Frontend")
 def serve_frontend():
     """Serves the GRIDPOINT interactive map visualization."""
-    for cand in [
-        os.path.join(BASE_DIR, "frontend", "dist", "index.html"),
-        os.path.join(BASE_DIR, "frontend", "index.html"),
-        os.path.join(BASE_DIR, "index.html"),
-    ]:
-        if os.path.exists(cand):
-            return FileResponse(cand, media_type="text/html")
-    return {"message": "Frontend build not found. Please run 'npm run dev' inside frontend directory."}
+    index_path = os.path.join(BASE_DIR, "index.html")
+    return FileResponse(
+        index_path,
+        media_type="text/html",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+    )
 
 @app.get("/api/city", response_model=CityResponse, summary="Fetch City Grid & Metadata")
 def get_city():
@@ -100,7 +109,10 @@ def optimize_network(req: OptimizeRequest):
         min_dispersion_km=req.min_dispersion_km,
         max_radius_km=req.max_radius_km,
         use_capacity=req.use_capacity,
-        capacity_per_warehouse=req.capacity_per_warehouse
+        capacity_per_warehouse=req.capacity_per_warehouse,
+        ev_fleet_pct=req.ev_fleet_pct,
+        picking_time_min=req.picking_time_min,
+        target_sla_minutes=req.target_sla_minutes
     )
     return result
 
@@ -109,7 +121,7 @@ def get_tradeoff(
     budget_monthly: Optional[float] = Query(None, description="Monthly rent budget"),
     property_size_sqft: float = Query(2500.0, description="Warehouse size in sq.ft"),
     petrol_cost_per_km: float = Query(2.0, description="Fuel cost rate"),
-    batch_size: int = Query(3, description="Deliveries per trip"),
+    batch_size: int = Query(23, description="Deliveries per driver per day (default: 23)"),
     min_dispersion_km: float = Query(6.5, description="Min separation distance between hubs in km")
 ):
     """

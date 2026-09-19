@@ -260,39 +260,39 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = ({
               </div>
             </div>
 
-            {/* PARAMETER 4: Deliveries per Trip */}
+            {/* PARAMETER 4: Deliveries per Driver / Day */}
             <div className="p-3 bg-[#FAF5E8]/50 rounded-xl border border-[#E8DFC9] space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-[#1F1A16] flex items-center gap-1.5">
                   <Package className="w-3.5 h-3.5 text-[#9E471A]" />
-                  <span>4. Deliveries per Trip (Batch Size)</span>
+                  <span>4. Deliveries per Driver / Day (15 to 30)</span>
                 </label>
                 <span className="font-mono font-bold text-xs bg-white border border-[#E8E0CE] px-2.5 py-0.5 rounded-md text-[#9E471A]">
-                  {batchSize} drops / trip
+                  {batchSize >= 12 ? batchSize : 23} drops / driver
                 </span>
               </div>
               <input
                 type="range"
-                min="1"
-                max="10"
+                min="15"
+                max="30"
                 step="1"
-                value={batchSize}
+                value={batchSize >= 12 ? batchSize : 23}
                 onChange={(e) => onChangeConfig({ batchSize: parseInt(e.target.value, 10) })}
                 className="w-full accent-[#9E471A] cursor-pointer h-2 bg-[#E8DEC7] rounded-lg"
               />
-              <div className="grid grid-cols-5 gap-1 pt-1">
-                {[1, 2, 3, 5, 8].map((b) => (
+              <div className="grid grid-cols-4 gap-1 pt-1">
+                {[18, 20, 23, 28].map((b) => (
                   <button
                     key={b}
                     type="button"
                     onClick={() => onChangeConfig({ batchSize: b })}
                     className={`py-1 text-[11px] font-semibold rounded-lg border transition-all cursor-pointer ${
-                      batchSize === b
+                      (batchSize >= 12 ? batchSize : 23) === b
                         ? 'bg-[#9E471A] text-white border-[#9E471A] shadow-2xs'
                         : 'bg-white text-[#5C5248] border-[#E8E0CE] hover:bg-[#FAF5E8]'
                     }`}
                   >
-                    {b} {b === 1 ? 'drop' : 'drops'}
+                    {b} drops {b === 23 ? '(Avg)' : ''}
                   </button>
                 ))}
               </div>
@@ -337,23 +337,44 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = ({
                 <span>15.0 km</span>
               </div>
               <p className="text-[10.5px] text-[#7A7168] leading-tight pt-0.5">
-                Enforces spatial dispersion ($D_{'{min}'}$) so warehouses do not clump in the same neighborhood.
+                Enforces spatial dispersion so warehouses do not clump in the same neighborhood.
               </p>
             </div>
 
-            {/* Hub Count (p) */}
+            {/* Hub Count (p): Scales from 1 to 100 */}
             <div className="p-3 bg-white rounded-xl border border-[#E8DFC9] space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-[#1F1A16] flex items-center gap-1.5">
                   <Building2 className="w-3.5 h-3.5 text-[#9E471A]" />
-                  <span>Number of Hubs to Place (p)</span>
+                  <span>Number of Hubs to Place (p: 1 to 100)</span>
                 </label>
-                <span className="font-mono font-bold text-xs text-[#9E471A] bg-[#FAF5E8] px-2 py-0.5 rounded border border-[#E8DFC9]">
-                  {numHubs} Hubs
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    step="1"
+                    value={numHubs}
+                    onChange={(e) => {
+                      const val = Math.max(1, Math.min(100, parseInt(e.target.value, 10) || 1));
+                      onChangeConfig({ maxWarehouses: val });
+                    }}
+                    className="w-16 px-2 py-0.5 text-right font-mono font-bold text-xs bg-white border border-[#E8E0CE] rounded-md text-[#9E471A]"
+                  />
+                  <span className="text-[11px] font-bold text-[#7A7168]">Hubs</span>
+                </div>
               </div>
-              <div className="grid grid-cols-6 gap-1.5">
-                {[1, 2, 3, 4, 5, 6].map((p) => (
+              <input
+                type="range"
+                min="1"
+                max="100"
+                step="1"
+                value={numHubs}
+                onChange={(e) => onChangeConfig({ maxWarehouses: parseInt(e.target.value, 10) })}
+                className="w-full accent-[#9E471A] cursor-pointer h-2 bg-[#E8DEC7] rounded-lg"
+              />
+              <div className="grid grid-cols-6 gap-1 pt-1">
+                {[3, 10, 25, 50, 75, 100].map((p) => (
                   <button
                     key={p}
                     type="button"

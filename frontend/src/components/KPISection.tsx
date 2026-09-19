@@ -86,45 +86,45 @@ export const KPISection: React.FC<KPISectionProps> = ({
         {/* 1. Warehouses */}
         <KPICard
           id="kpi-warehouses"
-          title="Optimal Hubs"
+          title="Active Hubs"
           value={`${metrics.optimalWarehouses}`}
-          baselineDiff="↓ 40% vs. baseline"
+          baselineDiff={`${metrics.optimalWarehouses >= 25 ? 'Quick-Commerce Scale' : 'Regional Network'}`}
           isPositive={true}
           icon={Warehouse}
-          subtext="3 of 10 selected"
+          subtext={`${metrics.optimalWarehouses} hubs placed`}
         />
 
         {/* 2. Total Cost */}
         <KPICard
           id="kpi-cost"
-          title="Daily Opex"
+          title="Annual Opex"
           value={formatINR(metrics.totalCostLakhs)}
           baselineDiff={`↓ ${costDiff || 18}% vs. baseline`}
           isPositive={true}
           icon={IndianRupee}
-          subtext="₹ 1.3L daily savings"
+          subtext="Facility lease + fleet"
         />
 
         {/* 3. Avg. Delivery Time */}
         <KPICard
           id="kpi-delivery-time"
-          title="Avg. Transit Time"
+          title="Avg. Delivery Time"
           value={formatMinutes(metrics.avgDeliveryTimeMin)}
           baselineDiff={`↓ ${timeDiff || 26}% vs. baseline`}
-          isPositive={true}
+          isPositive={metrics.avgDeliveryTimeMin <= 10.0}
           icon={Clock}
-          subtext="Intra-city transit"
+          subtext={metrics.avgDeliveryTimeMin <= 10.0 ? '10-Min SLA Achieved' : 'Traffic-attenuated'}
         />
 
-        {/* 4. Fuel Consumed */}
+        {/* 4. Fuel / EV Savings */}
         <KPICard
           id="kpi-fuel"
-          title="Fuel Consumed"
-          value={formatFuel(metrics.fuelConsumedLiters)}
-          baselineDiff={`↓ ${fuelDiff || 28}% vs. baseline`}
+          title={metrics.annualFuelSavings && metrics.annualFuelSavings > 0 ? "EV Fleet Savings" : "Fuel Consumed"}
+          value={metrics.annualFuelSavings && metrics.annualFuelSavings > 0 ? formatINR(metrics.annualFuelSavings / 100000) : formatFuel(metrics.fuelConsumedLiters)}
+          baselineDiff={metrics.annualFuelSavings && metrics.annualFuelSavings > 0 ? '100% EV Shift' : `↓ ${fuelDiff || 28}% vs. baseline`}
           isPositive={true}
           icon={Fuel}
-          subtext="Daily diesel burn"
+          subtext={metrics.annualFuelSavings && metrics.annualFuelSavings > 0 ? '/ year saved' : 'Annual fleet fuel'}
         />
 
         {/* 5. CO2 Emissions */}
@@ -135,18 +135,18 @@ export const KPISection: React.FC<KPISectionProps> = ({
           baselineDiff={`↓ ${co2Diff || 28}% vs. baseline`}
           isPositive={true}
           icon={Leaf}
-          subtext="GHG footprint"
+          subtext={metrics.annualCo2SavedTons ? `${formatTons(metrics.annualCo2SavedTons)} avoided` : 'GHG footprint'}
         />
 
-        {/* 6. SLA Compliance */}
+        {/* 6. 10-Minute SLA Compliance */}
         <KPICard
           id="kpi-sla"
-          title="SLA Compliance"
+          title="10-Min SLA Rate"
           value={formatPercent(metrics.slaCompliancePercent)}
-          baselineDiff={`↑ ${slaDiff || 6}% vs. baseline`}
-          isPositive={true}
+          baselineDiff={metrics.slaCompliancePercent >= 60 ? 'Quick-Commerce Viable' : 'Needs 25-75 hubs'}
+          isPositive={metrics.slaCompliancePercent >= 60}
           icon={ShieldCheck}
-          subtext="≤ 35min goal target"
+          subtext="≤ 10min quick-commerce"
         />
       </div>
     </section>

@@ -79,7 +79,7 @@ function MapViewController({
 }
 
 // Helper to generate custom DivIcon for Warehouses
-function createWarehouseIcon(isSelected: boolean, isOffline: boolean, id: string) {
+function createWarehouseIcon(isSelected: boolean, isOffline: boolean, id: string, color?: string) {
   if (isOffline) {
     return L.divIcon({
       className: 'custom-warehouse-marker',
@@ -99,16 +99,17 @@ function createWarehouseIcon(isSelected: boolean, isOffline: boolean, id: string
     });
   }
 
+  const hubBg = color || '#15803D';
   if (isSelected) {
     return L.divIcon({
       className: 'custom-warehouse-marker',
       html: `
         <div style="position: relative; display: flex; align-items: center; justify-content: center;">
-          <div style="position: absolute; width: 44px; height: 44px; border-radius: 50%; background: rgba(22, 163, 74, 0.25); animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-          <div style="width: 34px; height: 34px; border-radius: 9px; background: #15803D; border: 2.5px solid #FFFFFF; box-shadow: 0 4px 12px rgba(21,128,61,0.5); display: flex; align-items: center; justify-content: center; color: #FFFFFF;">
+          <div style="position: absolute; width: 44px; height: 44px; border-radius: 50%; background: ${hubBg}; opacity: 0.25; animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+          <div style="width: 34px; height: 34px; border-radius: 9px; background: ${hubBg}; border: 2.5px solid #FFFFFF; box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: #FFFFFF;">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
           </div>
-          <span style="position: absolute; bottom: -18px; font-size: 10px; font-weight: 800; background: #15803D; color: #FFFFFF; padding: 1px 6px; border-radius: 4px; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.15);">
+          <span style="position: absolute; bottom: -18px; font-size: 10px; font-weight: 800; background: ${hubBg}; color: #FFFFFF; padding: 1px 6px; border-radius: 4px; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
             ${id} OPTIMAL
           </span>
         </div>
@@ -306,10 +307,9 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({
 
           {/* Direct Leaflet Tile Layer */}
           <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-            url="https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+            attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+            url="https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=cb1_3qno_1_71275e10b239db3df0db0093"
             maxZoom={19}
-            subdomains={['a', 'b', 'c', 'd']}
           />
 
           {/* A. Demand Heatmap: Grid points from dataset */}
@@ -347,10 +347,10 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({
                 key={route.id}
                 positions={[route.origin, route.destination]}
                 pathOptions={{
-                  color: '#15803D',
-                  weight: 2.2,
-                  dashArray: '6, 6',
-                  opacity: 0.75,
+                  color: route.color || '#15803D',
+                  weight: 2.0,
+                  dashArray: '5, 5',
+                  opacity: 0.7,
                 }}
               >
                 <Popup>
@@ -453,7 +453,7 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({
               </Marker>
             ))}
 
-          {/* C & D. Warehouses: Candidate (gray) vs Selected (green) */}
+          {/* C & D. Warehouses: Candidate (gray) vs Selected (green or dynamic color) */}
           {warehouses.map((wh) => {
             if (wh.isSelected && !showSelected) return null;
             if (!wh.isSelected && !showCandidates) return null;
@@ -463,7 +463,7 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({
               <Marker
                 key={wh.id}
                 position={[wh.lat, wh.lng]}
-                icon={createWarehouseIcon(wh.isSelected, isOffline, wh.id)}
+                icon={createWarehouseIcon(wh.isSelected, isOffline, wh.id, wh.color)}
                 zIndexOffset={wh.isSelected ? 1000 : 500}
               >
                 <Popup>
@@ -489,6 +489,26 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({
                         {wh.isSelected ? 'Selected' : isOffline ? 'Offline' : 'Candidate'}
                       </span>
                     </div>
+
+                    {/* 10-Minute SLA & Delivery Time */}
+                    {wh.slaCompliancePct !== undefined && (
+                      <div className="flex items-center justify-between p-1.5 bg-emerald-50 text-emerald-900 rounded border border-emerald-200">
+                        <span className="font-semibold text-[11px]">⚡ 10-Min SLA:</span>
+                        <span className="font-extrabold text-xs">{wh.slaCompliancePct.toFixed(1)}%</span>
+                      </div>
+                    )}
+                    {wh.avgDeliveryTime !== undefined && (
+                      <div className="flex items-center justify-between text-[11px] text-[#57534E]">
+                        <span>⏱️ Avg Delivery Time:</span>
+                        <span className="font-bold text-[#1C1917]">{wh.avgDeliveryTime.toFixed(1)} min</span>
+                      </div>
+                    )}
+                    {wh.employeesRequired !== undefined && wh.employeesRequired > 0 && (
+                      <div className="flex items-center justify-between text-[11px] text-[#57534E]">
+                        <span>👥 Delivery Workforce:</span>
+                        <span className="font-bold text-[#9E471A]">{formatNumber(wh.employeesRequired)} drivers</span>
+                      </div>
+                    )}
 
                     {/* Capacity & Utilization Bar */}
                     <div className="space-y-1">

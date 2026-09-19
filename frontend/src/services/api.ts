@@ -234,17 +234,19 @@ class GridpointApiService {
           : Number((this.currentConfig.fuelPrice / 50.0).toFixed(2)) || 2.0;
 
       const reqPayload = {
-        num_warehouses: Math.max(1, Math.min(8, this.currentConfig.maxWarehouses || 3)),
+        num_warehouses: Math.max(1, Math.min(100, this.currentConfig.maxWarehouses || 3)),
         budget_monthly: budgetInInr,
         property_size_sqft: this.currentConfig.propertySizeSqft || 2500.0,
         petrol_cost_per_km: fuelPerKm,
-        batch_size: this.currentConfig.batchSize || 3,
+        batch_size: this.currentConfig.batchSize || 23,
         min_dispersion_km: this.currentConfig.minDispersionKm ?? 6.5,
         max_radius_km: this.currentConfig.maxDeliveryTime
           ? Math.round(this.currentConfig.maxDeliveryTime * 0.7)
           : null,
         use_capacity: this.currentConfig.useCapacity || false,
         capacity_per_warehouse: this.currentConfig.capacityPerWarehouse || null,
+        ev_fleet_pct: this.currentConfig.evShare !== undefined ? this.currentConfig.evShare : (this.currentConfig.evFleetPct || 0.0),
+        target_sla_minutes: this.currentConfig.targetSlaMinutes || 10.0,
       };
 
       const res = await fetch(`${API_BASE_URL}/optimize`, {
@@ -304,6 +306,11 @@ class GridpointApiService {
       assigned_orders: number;
       utilization_pct: number;
       color: string;
+      avg_delivery_time_min?: number;
+      sla_compliance_pct?: number;
+      employees_required?: number;
+      daily_salary?: number;
+      monthly_salary?: number;
     }>;
     assignments: Array<{
       demand_id: string;
@@ -314,10 +321,22 @@ class GridpointApiService {
       daily_fleet_km: number;
       daily_fuel: number;
       annual_fuel: number;
+      daily_fuel_liters?: number;
+      annual_co2_tons?: number;
       monthly_rent: number;
       annual_rent: number;
       total_annual: number;
       budget_used_pct?: number | null;
+      avg_delivery_time_min?: number;
+      sla_compliance_pct?: number;
+      target_sla_minutes?: number;
+      ev_fleet_pct?: number;
+      daily_petrol_cost?: number;
+      daily_ev_cost?: number;
+      daily_fuel_savings?: number;
+      annual_fuel_savings?: number;
+      annual_co2_saved_tons?: number;
+      total_employees?: number;
     };
     meta?: {
       solve_time_ms?: number;
@@ -339,9 +358,13 @@ class GridpointApiService {
       assignedZones: [],
       isCandidate: true,
       isSelected: true,
-      avgDeliveryTime: 22.0,
+      avgDeliveryTime: w.avg_delivery_time_min ?? (backendRes.costs.avg_delivery_time_min ?? 9.5),
       costPerSqFt: w.price_per_sqft,
       setupCostLakhs: Number(((w.monthly_rent * 1.5) / 100000).toFixed(1)),
+      color: w.color,
+      slaCompliancePct: w.sla_compliance_pct,
+      employeesRequired: w.employees_required,
+      monthlyRent: w.monthly_rent,
     }));
 
     const selectedWarehouseIds = selectedWarehouses.map((w) => w.id);
@@ -397,17 +420,19 @@ class GridpointApiService {
           trafficFactor: z.trafficIndex,
           fuelLiters: fuel,
           co2Kg: Number((fuel * 2.68).toFixed(2)),
+          color: wh.color || '#15803D',
         });
       }
     });
 
     // Compute average delivery time
     const avgDeliveryTime =
-      updatedZones.length > 0
+      backendRes.costs.avg_delivery_time_min ??
+      (updatedZones.length > 0
         ? Math.round(
             updatedZones.reduce((sum, z) => sum + z.deliveryTimeMinutes, 0) / updatedZones.length
           )
-        : 23;
+        : 9.5);
 
     // Fetch real U-curve tradeoff points if available
     let costVsWarehouses = await this.fetchTradeoff(selectedWarehouses.length);
@@ -497,14 +522,21 @@ class GridpointApiService {
       totalCostLakhs,
       avgDeliveryTimeMin: avgDeliveryTime,
       fuelConsumedLiters: annualFuel,
-      co2EmissionsTons: co2Tons,
-      slaCompliancePercent: 95.2,
+      co2EmissionsTons: backendRes.costs.annual_co2_tons ?? co2Tons,
+      slaCompliancePercent: backendRes.costs.sla_compliance_pct ?? 95.2,
+      dailyPetrolCost: backendRes.costs.daily_petrol_cost,
+      dailyEvCost: backendRes.costs.daily_ev_cost,
+      dailyFuelSavings: backendRes.costs.daily_fuel_savings,
+      annualFuelSavings: backendRes.costs.annual_fuel_savings,
+      annualCo2SavedTons: backendRes.costs.annual_co2_saved_tons,
+      totalEmployees: backendRes.costs.total_employees,
+      evFleetPct: backendRes.costs.ev_fleet_pct,
       baseline: {
         totalCostLakhs: Number((totalCostLakhs * 1.24).toFixed(1)),
         avgDeliveryTimeMin: Math.round(avgDeliveryTime * 1.38),
         fuelConsumedLiters: Math.round(annualFuel * 1.29),
-        co2EmissionsTons: Number((co2Tons * 1.3).toFixed(1)),
-        slaCompliancePercent: 78.4,
+        co2EmissionsTons: Number(((backendRes.costs.annual_co2_tons ?? co2Tons) * 1.3).toFixed(1)),
+        slaCompliancePercent: Math.max(5.0, Number(((backendRes.costs.sla_compliance_pct ?? 95.2) * 0.75).toFixed(1))),
       },
     };
 

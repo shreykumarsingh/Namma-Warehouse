@@ -52,6 +52,10 @@ export interface Warehouse {
   avgDeliveryTime: number; // minutes
   costPerSqFt?: number;
   setupCostLakhs?: number;
+  color?: string;
+  slaCompliancePct?: number;
+  employeesRequired?: number;
+  monthlyRent?: number;
 }
 
 export interface RouteAssignment {
@@ -68,6 +72,7 @@ export interface RouteAssignment {
   trafficFactor: number;
   fuelLiters: number;
   co2Kg: number;
+  color?: string;
 }
 
 export interface OptimizationConfig {
@@ -89,6 +94,9 @@ export interface OptimizationConfig {
   maxRadiusKm?: number;
   useCapacity?: boolean;
   capacityPerWarehouse?: number;
+  evShare?: number;
+  evFleetPct?: number;
+  targetSlaMinutes?: number;
 }
 
 export interface KPIMetrics {
@@ -98,6 +106,13 @@ export interface KPIMetrics {
   fuelConsumedLiters: number;
   co2EmissionsTons: number;
   slaCompliancePercent: number;
+  dailyPetrolCost?: number;
+  dailyEvCost?: number;
+  dailyFuelSavings?: number;
+  annualFuelSavings?: number;
+  annualCo2SavedTons?: number;
+  totalEmployees?: number;
+  evFleetPct?: number;
   baseline: {
     totalCostLakhs: number;
     avgDeliveryTimeMin: number;
