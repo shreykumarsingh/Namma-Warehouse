@@ -12,11 +12,12 @@ services:
         value: 3.11.9
 
   # Frontend: React 19 Vite Static Application
-  - type: static
+  - type: web
     name: namma-warehouse-frontend
+    runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
-    staticPublishPath: ./dist
+    staticPublishPath: dist
     routes:
       - type: rewrite
         source: /*
