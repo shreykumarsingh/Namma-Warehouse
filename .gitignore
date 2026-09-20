@@ -20,6 +20,7 @@ venv/
 # Environment & local files
 .env
 .env.local
+!.env.production
 *.log
 
 # Editor & OS
