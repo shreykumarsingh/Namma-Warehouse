@@ -503,14 +503,4 @@ A live indicator in the header will display **"FastAPI: Online"** with a pulsing
 
 ---
 
-## 🔮 Roadmap & Recommended Next Additions
-
-To push the platform to enterprise production grade, the following enhancements are architected and ready to integrate:
-
-1. **Interactive CSV File Drag-and-Drop**: A modal on the Data Page allowing users to upload custom CSV datasets directly from their machine (`name, lat, lng, orders`).
-2. **Multi-Modal Vehicle Profile Selector**: A preset dropdown in the parameter controls for **Two-Wheelers** (23 drops/shift, ₹2.0/km), **Three-Wheeler Cargo** (Mahindra Treo Zor @ 50 drops/shift, ₹4.5/km), and **Mini-Trucks** (Tata Ace @ 120 drops/shift, ₹8.0/km).
-3. **Executive Summary Export (PDF / CSV)**: One-click export of optimal warehouse locations, budgets, driver headcounts, and SLA compliance metrics.
-
----
-
 **Built with pride for Namma Bengaluru 🚀**
