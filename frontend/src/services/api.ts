@@ -22,7 +22,7 @@ import { BENGALURU_800_POINTS } from '../data/rawBengaluruPoints';
 import { runOptimization } from '../utils/solver';
 import { calculateDeliveryTimeMinutes, calculateDistanceKm } from '../utils/geo';
 
-const API_BASE_URL =
+let API_BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string) ||
   (typeof window !== 'undefined' && window.location.hostname.includes('onrender.com')
     ? 'https://namma-warehouse-6ynz.onrender.com/api'
@@ -53,7 +53,31 @@ export interface CityApiResponse {
     nearest_locality: string;
     zone: string;
   }>;
-  defaults: Record<string, unknown>;
+  defaults: {
+    num_warehouses: number;
+    property_size_sqft: number;
+    budget_monthly?: number | null;
+    petrol_cost_per_km: number;
+    batch_size: number;
+    min_dispersion_km: number;
+    max_radius_km: number;
+    ev_fleet_pct: number;
+    target_sla_minutes: number;
+  };
+}
+
+export interface OptimizationRequest {
+  num_warehouses: number;
+  property_size_sqft: number;
+  budget_monthly?: number | null;
+  petrol_cost_per_km: number;
+  batch_size: number;
+  min_dispersion_km: number;
+  max_radius_km: number;
+  ev_fleet_pct: number;
+  demand_multiplier: number;
+  traffic_multiplier: number;
+  custom_points?: any[];
 }
 
 class GridpointApiService {
@@ -67,6 +91,8 @@ class GridpointApiService {
   private customPoints: Array<Record<string, unknown>> | null = null;
 
   constructor() {
+    // Initial health check
+    this.checkBackendHealth();
     // Initial baseline client result
     this.currentResult = runOptimization(
       this.candidateWarehouses,
@@ -92,34 +118,48 @@ class GridpointApiService {
   }
 
   /**
-   * Checks whether the FastAPI backend is running and healthy
+   * Checks whether the FastAPI backend is running and healthy, auto-discovering the active endpoint
    */
   async checkBackendHealth(): Promise<BackendStatus> {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const candidates = Array.from(
+      new Set(
+        [
+          API_BASE_URL,
+          import.meta.env.VITE_API_BASE_URL as string,
+          'https://namma-warehouse-6ynz.onrender.com/api',
+          'https://namma-warehouse-backend.onrender.com/api',
+          '/api',
+        ].filter(Boolean) as string[]
+      )
+    );
 
-      // Probe either the root or /api/city endpoint
-      const res = await fetch(`${API_BASE_URL}/city`, {
-        method: 'GET',
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
+    for (const targetUrl of candidates) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
 
-      if (res.ok) {
-        const data = await res.json();
-        this.cityDataCache = data;
-        const status: BackendStatus = {
-          online: true,
-          version: '2.0.0',
-          service: 'GRIDPOINT FastAPI Backend',
-          checkedAt: Date.now(),
-        };
-        this.notifyStatus(status);
-        return status;
+        const res = await fetch(`${targetUrl}/city`, {
+          method: 'GET',
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (res.ok) {
+          const data = await res.json();
+          API_BASE_URL = targetUrl;
+          this.cityDataCache = data;
+          const status: BackendStatus = {
+            online: true,
+            version: '2.0.0',
+            service: 'GRIDPOINT FastAPI Backend',
+            checkedAt: Date.now(),
+          };
+          this.notifyStatus(status);
+          return status;
+        }
+      } catch {
+        // Try next candidate
       }
-    } catch {
-      // Backend not responding, fallback to local
     }
 
     const offlineStatus: BackendStatus = {
