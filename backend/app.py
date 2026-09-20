@@ -51,7 +51,7 @@ app = FastAPI(
 import io
 import csv
 
-# Enable CORS for local dev & production environments with credentials support
+# Enable CORS for local dev & production environments (including Render)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -62,7 +62,7 @@ app.add_middleware(
         "http://localhost:8000",
         "http://127.0.0.1:8000",
     ],
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|.*\.onrender\.com)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
