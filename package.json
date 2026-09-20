@@ -6,7 +6,7 @@
     "dev": "npm --prefix frontend run dev",
     "frontend": "npm --prefix frontend run dev",
     "backend": "python backend/app.py",
-    "build": "npm --prefix frontend run build",
+    "build": "npm --prefix frontend install && npm --prefix frontend run build",
     "install:all": "pip install -r backend/requirements.txt && npm --prefix frontend install"
   },
   "keywords": [
