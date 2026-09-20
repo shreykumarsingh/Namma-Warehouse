@@ -22,7 +22,11 @@ import { BENGALURU_800_POINTS } from '../data/rawBengaluruPoints';
 import { runOptimization } from '../utils/solver';
 import { calculateDeliveryTimeMinutes, calculateDistanceKm } from '../utils/geo';
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) || '/api';
+const API_BASE_URL =
+  (import.meta.env.VITE_API_BASE_URL as string) ||
+  (typeof window !== 'undefined' && window.location.hostname.includes('onrender.com')
+    ? 'https://namma-warehouse-6ynz.onrender.com/api'
+    : '/api');
 
 export interface BackendStatus {
   online: boolean;
