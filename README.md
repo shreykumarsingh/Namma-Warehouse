@@ -24,7 +24,7 @@
 9. [REST API Specification](#-rest-api-specification)
 10. [Frontend Dashboard & Interactive Visualization](#-frontend-dashboard--interactive-visualization)
 11. [Installation & Getting Started](#-installation--getting-started)
-12. [Evaluation Summary & Next Steps](#-evaluation-summary--next-steps)
+12. [Platform Highlights & Architectural Summary](#-platform-highlights--architectural-summary)
 
 ---
 
@@ -490,16 +490,16 @@ A live indicator in the header will display **"FastAPI: Online"** with a pulsing
 
 ---
 
-## 🏆 Hackathon Evaluation Summary
+## 📊 Platform Highlights & Architectural Summary
 
-| Evaluation Dimension | Project Score | Highlights |
-| :--- | :---: | :--- |
-| **Mathematical Rigor** | **Advanced** | Discrete Capacitated Facility Location with spatial dispersion ($D_{\min}$), Anti-Deadlock Regret-First Allocation, and Kinematic 3-phase SLA equations (Zero K-Means). |
-| **Quick-Commerce Relevance** | **Industry-Grade** | Solves the 10-Minute SLA feasibility paradox using empirical Bangalore traffic models and picking times. |
-| **Workforce & Route Modeling** | **Realistic** | Models 52,050 delivery riders delivering 1.19M orders/day with localized milk-runs at ₹1,000/day wages. |
-| **ESG & Sustainability Impact** | **Quantified** | Interactive EV transition simulator calculating ₹44+ Crore/year fuel savings and 17,700 Tons CO₂ eliminated. |
-| **Geospatial Realism** | **Bengaluru BBMP** | 800 discrete Bangalore nodes covering all 5 administrative zones with actual commercial real estate rates and congestion layers. |
-| **Code & API Quality** | **Sub-150ms** | High-performance FastAPI backend paired with a modern glassmorphic React 19 UI. |
+| Core Pillar | Technical Architecture | Real-World Operational Impact |
+| :--- | :--- | :--- |
+| **Mathematical Optimization** | Discrete Capacitated Facility Location with spatial dispersion ($D_{\min}$), Anti-Deadlock Regret-First Allocation, and 1-Opt Local Search (Zero K-Means). | Eliminates unviable lake/residential centroid placements; guarantees sub-150ms convergence across 800 nodes. |
+| **Quick-Commerce SLA Engine** | 3-phase kinematic fulfillment model integrating warehouse staging delays, traffic impedance, and high-density doorstep handover. | Mathematically predicts micro-hub density requirements to reliably achieve 10-minute delivery in Bengaluru. |
+| **Workforce & Shift Logistics** | Delivery workforce modeling (52,050 active drivers @ ₹1,000/day baseline wages) with localized milk-run routing batches. | Connects theoretical facility location to practical operational payroll, shift limits, and daily rider travel distance. |
+| **ESG Fleet Electrification** | Interactive green fleet transition simulator evaluating real-world petrol vs. EV charging operating expense curves. | Projects over ₹44+ Crore/year in operational fuel savings and eliminates 17,700+ tons of CO₂ emissions annually. |
+| **Geospatial Precision** | 800 discrete BBMP nodes covering all 5 administrative zones with real commercial real estate rates and congestion layers. | Provides granular, actionable supply chain decision support customized for Greater Bengaluru geography. |
+| **High-Throughput API Stack** | Asynchronous FastAPI backend coupled with a modern glassmorphic React 19 dashboard and offline client fallback. | Enables sub-second parameter tuning, multi-scenario stress testing, and seamless user interaction. |
 
 ---
 
