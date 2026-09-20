@@ -138,6 +138,14 @@ export interface OptimizationResult {
   };
   summaryMessage: string;
   executionTimeMs: number;
+  status?: 'ok' | 'infeasible' | string;
+  infeasibleReason?: string;
+  infeasibleMessage?: string;
+  suggestedBudget?: number;
+  nodeAssignments?: Record<string, { warehouseId: string; warehouseName: string; color: string; distance: number }>;
+  nodeSpokes?: Array<{ origin: [number, number]; destination: [number, number]; color: string }>;
+  budgetNotice?: string;
+  costs?: any;
 }
 
 export interface CityOption {

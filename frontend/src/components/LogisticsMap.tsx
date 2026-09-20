@@ -1,33 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   MapContainer,
   TileLayer,
   CircleMarker,
-  Marker,
   Polyline,
   Popup,
   Tooltip,
+  Marker,
   useMap,
 } from 'react-leaflet';
 import L from 'leaflet';
 import {
   Warehouse as WarehouseIcon,
   Layers,
-  RotateCcw,
-  ZoomIn,
-  ZoomOut,
-  Navigation,
-  Clock,
-  IndianRupee,
-  Activity,
   Maximize2,
+  Users,
+  Zap,
 } from 'lucide-react';
 import { DemandZone, Warehouse, RouteAssignment, CityOption, GridPoint } from '../types';
 import { BENGALURU_800_POINTS } from '../data/rawBengaluruPoints';
 import {
   formatINR,
   formatNumber,
-  formatPercent,
   formatMinutes,
   formatDistance,
 } from '../utils/formatters';
@@ -38,9 +32,11 @@ interface LogisticsMapProps {
   zones: DemandZone[];
   assignments: RouteAssignment[];
   customPoints?: GridPoint[];
+  nodeAssignments?: Record<string, { warehouseId: string; warehouseName: string; color: string; distance: number }>;
+  nodeSpokes?: Array<{ origin: [number, number]; destination: [number, number]; color: string }>;
 }
 
-// Controller component to reset view or pan to city center and auto-fit hubs
+// Controller component to reset view or auto-fit camera to all active warehouse hubs
 function MapViewController({
   center,
   zoom,
@@ -54,181 +50,171 @@ function MapViewController({
 }) {
   const map = useMap();
 
-  // Invalidate size to guarantee correct canvas dimensions and prevent blank map tiles
   useEffect(() => {
     map.invalidateSize();
     const t1 = setTimeout(() => map.invalidateSize(), 100);
-    const t2 = setTimeout(() => map.invalidateSize(), 400);
+    const t2 = setTimeout(() => map.invalidateSize(), 350);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
     };
   }, [map]);
 
+  // Update view only when city changes
   useEffect(() => {
-    const selected = warehouses?.filter((w) => w.isSelected && w.lat && w.lng);
-    if (selected && selected.length > 0) {
-      const bounds = L.latLngBounds(selected.map((w) => [w.lat, w.lng]));
-      map.fitBounds(bounds, { padding: [80, 80], maxZoom: 13, animate: true });
-    } else {
-      map.setView(center, zoom, { animate: true });
+    map.setView(center, zoom, { animate: true });
+  }, [center, zoom, map]);
+
+  // Auto-fit camera to active warehouse hubs ONLY when user explicitly clicks "Fit Hubs"
+  useEffect(() => {
+    if (resetTrigger && resetTrigger > 0) {
+      const selected = warehouses?.filter((w) => w.isSelected && w.lat && w.lng);
+      if (selected && selected.length > 0) {
+        const bounds = L.latLngBounds(selected.map((w) => [w.lat, w.lng]));
+        map.fitBounds(bounds, { padding: [60, 60], maxZoom: 13, animate: true });
+      } else {
+        map.setView(center, zoom, { animate: true });
+      }
     }
-  }, [center, zoom, map, warehouses, resetTrigger]);
+  }, [resetTrigger, map, warehouses, center, zoom]);
 
   return null;
 }
 
-// Helper to generate custom DivIcon for Warehouses
-function createWarehouseIcon(isSelected: boolean, isOffline: boolean, id: string, color?: string) {
-  if (isOffline) {
-    return L.divIcon({
-      className: 'custom-warehouse-marker',
-      html: `
-        <div style="position: relative; display: flex; align-items: center; justify-content: center;">
-          <div style="width: 32px; height: 32px; border-radius: 8px; background: #EF4444; border: 2px solid #FFFFFF; box-shadow: 0 4px 10px rgba(239,68,68,0.4); display: flex; align-items: center; justify-content: center; color: #FFFFFF;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 2 20 20"/><path d="M4 10v10h16v-6"/><path d="M4 10 12 4l8 6"/></svg>
-          </div>
-          <span style="position: absolute; top: -18px; font-size: 10px; font-weight: 800; background: #1C1917; color: #FFFFFF; padding: 1px 5px; border-radius: 4px; white-space: nowrap; border: 1px solid #78716C;">
-            ${id} (OFFLINE)
-          </span>
-        </div>
-      `,
-      iconSize: [32, 32],
-      iconAnchor: [16, 16],
-      popupAnchor: [0, -18],
-    });
-  }
-
-  const hubBg = color || '#15803D';
-  if (isSelected) {
-    return L.divIcon({
-      className: 'custom-warehouse-marker',
-      html: `
-        <div style="position: relative; display: flex; align-items: center; justify-content: center;">
-          <div style="position: absolute; width: 44px; height: 44px; border-radius: 50%; background: ${hubBg}; opacity: 0.25; animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-          <div style="width: 34px; height: 34px; border-radius: 9px; background: ${hubBg}; border: 2.5px solid #FFFFFF; box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: #FFFFFF;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-          </div>
-          <span style="position: absolute; bottom: -18px; font-size: 10px; font-weight: 800; background: ${hubBg}; color: #FFFFFF; padding: 1px 6px; border-radius: 4px; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-            ${id} OPTIMAL
-          </span>
-        </div>
-      `,
-      iconSize: [34, 34],
-      iconAnchor: [17, 17],
-      popupAnchor: [0, -20],
-    });
-  }
-
-  // Candidate Warehouse (Neutral Slate)
-  return L.divIcon({
-    className: 'custom-warehouse-marker',
-    html: `
-      <div style="position: relative; display: flex; align-items: center; justify-content: center;">
-        <div style="width: 28px; height: 28px; border-radius: 8px; background: #57534E; border: 2px solid #FFFFFF; box-shadow: 0 3px 8px rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center; color: #FFFFFF;">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-        </div>
-        <span style="position: absolute; bottom: -16px; font-size: 9px; font-weight: 700; background: #44403C; color: #E7E2D4; padding: 0px 4px; border-radius: 3px; white-space: nowrap;">
-          ${id} Candidate
-        </span>
-      </div>
-    `,
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-    popupAnchor: [0, -16],
-  });
+// Helper to convert hex to rgba
+function hexToRGBA(hex: string, alpha: number): string {
+  const cleanHex = hex.replace('#', '');
+  const r = parseInt(cleanHex.substring(0, 2), 16) || 158;
+  const g = parseInt(cleanHex.substring(2, 4), 16) || 71;
+  const b = parseInt(cleanHex.substring(4, 6), 16) || 26;
+  return `rgba(${r},${g},${b},${alpha})`;
 }
 
-// Icon for Demand Zone centers
-function createDemandZoneIcon(priority: string, name: string) {
-  const color =
-    priority === 'High' ? '#DC2626' : priority === 'Medium' ? '#D97706' : '#65A30D';
-
-  return L.divIcon({
-    className: 'custom-zone-marker',
-    html: `
-      <div style="position: relative; display: flex; align-items: center; justify-content: center;">
-        <div style="width: 14px; height: 14px; border-radius: 50%; background: ${color}; border: 2px solid #FFFFFF; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>
-      </div>
-    `,
-    iconSize: [14, 14],
-    iconAnchor: [7, 7],
-    popupAnchor: [0, -8],
-  });
-}
-
-export const LogisticsMap: React.FC<LogisticsMapProps> = ({
+export const LogisticsMap: React.FC<LogisticsMapProps> = React.memo(({
   city,
   warehouses,
   zones,
   assignments,
   customPoints,
+  nodeAssignments,
+  nodeSpokes,
 }) => {
   // Layer Toggles
   const [showHeatmap, setShowHeatmap] = useState(true);
-  const [showZones, setShowZones] = useState(true);
-  const [showCandidates, setShowCandidates] = useState(true);
   const [showSelected, setShowSelected] = useState(true);
+  const [showCandidates, setShowCandidates] = useState(false);
   const [showRoutes, setShowRoutes] = useState(true);
   const [isLayerMenuOpen, setIsLayerMenuOpen] = useState(false);
   const [focusTrigger, setFocusTrigger] = useState(0);
+  const [focusWarehousesOnly, setFocusWarehousesOnly] = useState(false);
 
-  // Raw coordinate dataset for heatmap
+  // Raw coordinate dataset for demand nodes
   const rawPoints = customPoints && customPoints.length > 0 ? customPoints : BENGALURU_800_POINTS;
 
-  // Compute heatmap color interpolation
-  const getHeatmapColor = (orders: number) => {
-    if (orders >= 450) return '#DC2626'; // Red - high demand
+  const selectedWarehouses = useMemo(
+    () => warehouses.filter((w) => w.isSelected),
+    [warehouses]
+  );
+  const candidateWarehouses = useMemo(
+    () => warehouses.filter((w) => !w.isSelected),
+    [warehouses]
+  );
+
+  const numWh = selectedWarehouses.length;
+
+  // Sizing of Warehouse Hubs:
+  // In "All Nodes" mode: Warehouses are BIG target/halo markers (matching reference image)
+  // with a prominent outer colored ring and solid white-bordered core, so they can be pinpointed instantly amid 800 colored demand nodes.
+  // In "Hubs Only (Grey Nodes)" mode: Demand nodes are muted grey, so warehouses are already colorful and distinct.
+  // They don't need to be huge, just enough to be cleanly visible.
+  const coreRadius = focusWarehousesOnly
+    ? (numWh > 50 ? 6.5 : (numWh > 20 ? 8 : 9.5))
+    : (numWh > 50 ? 10 : (numWh > 20 ? 12 : 14));
+
+  const haloRadius = focusWarehousesOnly
+    ? (numWh > 50 ? 11 : (numWh > 20 ? 13.5 : 16))
+    : (numWh > 50 ? 21 : (numWh > 20 ? 24 : 28));
+
+  const haloFillOpacity = focusWarehousesOnly ? 0.20 : 0.25;
+  const haloWeight = focusWarehousesOnly ? 1.5 : 2.8;
+  const haloBorderOpacity = focusWarehousesOnly ? 0.55 : 0.95;
+  const coreBorderWeight = focusWarehousesOnly ? 2.0 : 3.0;
+
+  const spokeOpacity = numWh > 30 ? 0.14 : (numWh > 10 ? 0.22 : 0.28);
+
+  // Heatmap fallback color interpolation
+  const getDemandColor = (orders: number) => {
+    if (orders >= 450) return '#DC2626'; // High demand
     if (orders >= 250) return '#EA580C'; // Orange
-    if (orders >= 120) return '#F59E0B'; // Amber - medium demand
+    if (orders >= 120) return '#F59E0B'; // Amber
     return '#FCD34D'; // Yellow - low demand
   };
 
-  const selectedWarehouses = warehouses.filter((w) => w.isSelected);
-  const candidateWarehouses = warehouses.filter((w) => !w.isSelected);
-
   return (
-    <div className="relative w-full h-[600px] lg:h-[650px] rounded-2xl overflow-hidden border border-[#E8E0CE] bg-[#FAF7EF] shadow-xs flex flex-col">
+    <div className="relative w-full h-full min-h-[680px] xl:h-[740px] rounded-lg overflow-hidden border border-gray-200 bg-white shadow-sm flex flex-col">
       {/* Map Header / Toolbar */}
-      <div className="bg-white/95 backdrop-blur-xs border-b border-[#E8E0CE] px-5 py-3.5 flex items-center justify-between z-20 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-2.5 h-2.5 rounded-full bg-[#EA580C] animate-pulse"></div>
+      <div className="bg-white border-b border-gray-200 px-4 py-2 flex flex-wrap items-center justify-between gap-2 z-20 shrink-0">
+        <div className="flex items-center gap-2">
           <div>
-            <h2 className="text-sm sm:text-base font-bold text-[#1F1A16] tracking-tight font-serif">
-              Bengaluru City Demand & Logistics Network
+            <h2 className="text-sm font-semibold text-gray-900">
+              Bangalore Demand & Warehouse Network
             </h2>
-            <p className="text-xs text-[#7A7168]">
-              {city.name} BBMP Municipal Footprint • {rawPoints.length} Demand Grid Nodes • {selectedWarehouses.length} Active Hubs
+            <p className="text-[11px] text-gray-500">
+              {rawPoints.length} demand nodes · <span className="font-medium text-gray-700">{selectedWarehouses.length} active hubs</span>
             </p>
           </div>
         </div>
 
         {/* Map Action Buttons */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {/* Node Display Mode Toggle (Calculated Hubs vs All Nodes) */}
+          <div className="flex items-center bg-gray-100 border border-gray-200 rounded-md p-0.5 text-xs font-medium">
+            <button
+              type="button"
+              onClick={() => setFocusWarehousesOnly(false)}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded transition-all cursor-pointer ${
+                !focusWarehousesOnly
+                  ? 'bg-white text-gray-900 shadow-sm font-semibold'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+              title="Show warehouse locations alongside other nodes (colored by catchment)"
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span>All Nodes</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setFocusWarehousesOnly(true)}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded transition-all cursor-pointer ${
+                focusWarehousesOnly
+                  ? 'bg-violet-600 text-white shadow-sm font-semibold'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+              title="Show only calculated warehouse locations (other nodes grey)"
+            >
+              <WarehouseIcon className="w-3.5 h-3.5" />
+              <span>Hubs Only</span>
+            </button>
+          </div>
+
           {/* Fit Hubs Button */}
           <button
             onClick={() => setFocusTrigger((prev) => prev + 1)}
             title="Auto-fit camera to all active warehouse hubs"
-            className="flex items-center gap-1 px-2.5 py-1.5 bg-[#FAF7EF] hover:bg-[#F5F0E4] border border-[#E7E2D4] rounded-lg text-xs font-semibold text-[#292524] transition-colors cursor-pointer shadow-2xs"
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-md text-xs font-medium text-gray-700 transition-colors cursor-pointer"
           >
-            <Maximize2 className="w-3.5 h-3.5 text-[#9E471A]" />
+            <Maximize2 className="w-3.5 h-3.5 text-gray-500" />
             <span className="hidden sm:inline">Fit Hubs</span>
           </button>
-
-          {/* Leaflet Spatial Engine Badge */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-semibold shadow-2xs">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Leaflet Map Engine</span>
-          </div>
 
           {/* Layer Toggle Dropdown */}
           <div className="relative">
             <button
               id="map-layers-toggle-btn"
               onClick={() => setIsLayerMenuOpen(!isLayerMenuOpen)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#FAF7EF] hover:bg-[#F5F0E4] border border-[#E7E2D4] rounded-lg text-xs font-semibold text-[#292524] transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-md text-xs font-medium text-gray-700 transition-colors cursor-pointer"
             >
-              <Layers className="w-3.5 h-3.5 text-amber-600" />
+              <Layers className="w-3.5 h-3.5 text-gray-500" />
               <span>Layers</span>
             </button>
 
@@ -242,46 +228,47 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({
                     type="checkbox"
                     checked={showHeatmap}
                     onChange={(e) => setShowHeatmap(e.target.checked)}
-                    className="rounded text-amber-600 focus:ring-amber-500"
+                    className="rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
                   />
-                  <span className="font-medium text-[#292524]">Demand Heatmap ({rawPoints.length})</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer hover:bg-[#FAF7EF] p-1 rounded">
-                  <input
-                    type="checkbox"
-                    checked={showZones}
-                    onChange={(e) => setShowZones(e.target.checked)}
-                    className="rounded text-amber-600 focus:ring-amber-500"
-                  />
-                  <span className="font-medium text-[#292524]">Demand Zones ({zones.length})</span>
+                  <span className="font-medium text-[#292524]">
+                    800 Demand Nodes {nodeAssignments ? '(Territory Coloured)' : ''}
+                  </span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer hover:bg-[#FAF7EF] p-1 rounded">
                   <input
                     type="checkbox"
                     checked={showSelected}
                     onChange={(e) => setShowSelected(e.target.checked)}
-                    className="rounded text-emerald-600 focus:ring-emerald-500"
+                    className="rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                   />
-                  <span className="font-medium text-[#292524]">Selected Hubs ({selectedWarehouses.length})</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer hover:bg-[#FAF7EF] p-1 rounded">
-                  <input
-                    type="checkbox"
-                    checked={showCandidates}
-                    onChange={(e) => setShowCandidates(e.target.checked)}
-                    className="rounded text-amber-600 focus:ring-amber-500"
-                  />
-                  <span className="font-medium text-[#292524]">Candidate Hubs ({candidateWarehouses.length})</span>
+                  <span className="font-medium text-[#292524]">
+                    Active Hubs ({selectedWarehouses.length})
+                  </span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer hover:bg-[#FAF7EF] p-1 rounded">
                   <input
                     type="checkbox"
                     checked={showRoutes}
                     onChange={(e) => setShowRoutes(e.target.checked)}
-                    className="rounded text-amber-600 focus:ring-amber-500"
+                    className="rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
                   />
-                  <span className="font-medium text-[#292524]">Delivery Routes ({assignments.length})</span>
+                  <span className="font-medium text-[#292524]">
+                    Spoke Routes {nodeSpokes ? `(${nodeSpokes.length})` : ''}
+                  </span>
                 </label>
+                {candidateWarehouses.length > 0 && (
+                  <label className="flex items-center gap-2 cursor-pointer hover:bg-[#FAF7EF] p-1 rounded">
+                    <input
+                      type="checkbox"
+                      checked={showCandidates}
+                      onChange={(e) => setShowCandidates(e.target.checked)}
+                      className="rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+                    />
+                    <span className="font-medium text-[#292524]">
+                      Candidate Nodes ({candidateWarehouses.length})
+                    </span>
+                  </label>
+                )}
               </div>
             )}
           </div>
@@ -305,43 +292,118 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({
             resetTrigger={focusTrigger}
           />
 
-          {/* Direct Leaflet Tile Layer */}
+          {/* Direct Leaflet Tile Layer (CARTO Voyager with API key matching index.html) */}
           <TileLayer
             attribution='&copy; <a href="https://carto.com/">CARTO</a>'
             url="https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=cb1_3qno_1_71275e10b239db3df0db0093"
             maxZoom={19}
           />
 
-          {/* A. Demand Heatmap: Grid points from dataset */}
+          {/* 1. Demand Grid Nodes (800 Points): Colored by Catchment or Greyed Out when in Hubs Focus mode */}
           {showHeatmap &&
             rawPoints.map((pt) => {
-              const color = getHeatmapColor(pt.orders);
+              const assigned = nodeAssignments ? nodeAssignments[pt.id] : null;
+
+              // Hubs Only Focus: demand nodes are muted grey; All Nodes Mode: colored by assigned warehouse color
+              const fillColor = focusWarehousesOnly
+                ? '#94A3B8'
+                : assigned
+                ? assigned.color
+                : getDemandColor(pt.orders);
+
+              const strokeColor = focusWarehousesOnly
+                ? '#CBD5E1'
+                : assigned
+                ? fillColor
+                : 'transparent';
+
+              const nodeRadius = focusWarehousesOnly
+                ? 2.5
+                : assigned
+                ? 4
+                : (pt.orders > 400 ? 5 : 3.5);
+
+              const fillOpacity = focusWarehousesOnly
+                ? 0.28
+                : assigned
+                ? 0.60
+                : 0.45;
+
+              const weight = focusWarehousesOnly
+                ? 0.4
+                : assigned
+                ? 0.5
+                : 0;
+
               return (
                 <CircleMarker
                   key={pt.id}
                   center={[pt.lat, pt.lng]}
-                  radius={pt.orders > 400 ? 5 : 3.5}
+                  radius={nodeRadius}
                   pathOptions={{
-                    color: color,
-                    fillColor: color,
-                    fillOpacity: 0.65,
-                    weight: 1,
-                    opacity: 0.8,
+                    color: strokeColor,
+                    fillColor: fillColor,
+                    fillOpacity: fillOpacity,
+                    weight: weight,
                   }}
                 >
-                  <Tooltip direction="top" offset={[0, -5]} opacity={0.9}>
-                    <div className="text-[11px] font-sans">
-                      <div className="font-bold text-[#1C1917]">{pt.id}</div>
-                      <div>{pt.orders} orders/day</div>
-                      {pt.traffic && <div>Traffic index: {pt.traffic}</div>}
+                  <Popup>
+                    <div className="text-xs space-y-1 font-sans min-w-[180px]">
+                      <div className="font-bold text-[#1C1917] flex justify-between items-center">
+                        <span>{pt.zoneName || pt.id}</span>
+                        <span className="font-mono text-[10px] text-[#7A7168]">{pt.id}</span>
+                      </div>
+                      <div className="text-[#5C5248]">
+                        Orders: <strong className="text-[#1F1A16]">{formatNumber(pt.orders)} / day</strong>
+                      </div>
+                      {pt.traffic !== undefined && (
+                        <div className="text-[#5C5248]">
+                          Traffic index: <strong>{pt.traffic.toFixed(2)}</strong>
+                        </div>
+                      )}
+                      {pt.price !== undefined && (
+                        <div className="text-[#5C5248]">
+                          Rent benchmark: <strong>₹{pt.price.toFixed(0)}/sqft</strong>
+                        </div>
+                      )}
+                      {assigned && (
+                        <div className="mt-1 pt-1 border-t border-dashed border-[#E8E0CE]">
+                          <div className="text-emerald-800 font-semibold flex items-center gap-1">
+                            <span
+                              className="w-2 h-2 rounded-full inline-block"
+                              style={{ background: focusWarehousesOnly ? '#94A3B8' : assigned.color }}
+                            />
+                            <span>Assigned: {assigned.warehouseName}</span>
+                          </div>
+                          <div className="text-[#7A7168] text-[10px]">
+                            Distance: {assigned.distance.toFixed(1)} km
+                            {focusWarehousesOnly && <span className="ml-1 text-purple-600 font-medium">(Hubs-Only mode active)</span>}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </Tooltip>
+                  </Popup>
                 </CircleMarker>
               );
             })}
 
-          {/* E. Delivery Routes: Drawn from selected warehouse to assigned demand zone */}
-          {showRoutes &&
+          {/* 2. Spoke Lines: Connecting 800 demand points directly to assigned warehouse (Hidden in Hubs Only mode) */}
+          {showRoutes && !focusWarehousesOnly && nodeSpokes && nodeSpokes.length > 0 &&
+            nodeSpokes.map((spoke, idx) => (
+              <Polyline
+                key={`spoke-${idx}`}
+                positions={[spoke.origin, spoke.destination]}
+                pathOptions={{
+                  color: hexToRGBA(spoke.color, spokeOpacity),
+                  weight: 1.0,
+                  dashArray: '4 6',
+                  opacity: 0.9,
+                }}
+              />
+            ))}
+
+          {/* Fallback legacy routes if nodeSpokes not yet initialized */}
+          {showRoutes && !focusWarehousesOnly && (!nodeSpokes || nodeSpokes.length === 0) &&
             assignments.map((route) => (
               <Polyline
                 key={route.id}
@@ -349,287 +411,185 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = ({
                 pathOptions={{
                   color: route.color || '#15803D',
                   weight: 2.0,
-                  dashArray: '5, 5',
+                  dashArray: '5 5',
                   opacity: 0.7,
                 }}
-              >
-                <Popup>
-                  <div className="text-xs space-y-1">
-                    <div className="font-bold text-[#1C1917]">
-                      {route.warehouseName} → {route.zoneName}
-                    </div>
-                    <div className="text-[#78716C]">
-                      Distance: <span className="font-semibold text-[#1C1917]">{formatDistance(route.distanceKm)}</span>
-                    </div>
-                    <div className="text-[#78716C]">
-                      Est. Time: <span className="font-semibold text-[#1C1917]">{formatMinutes(route.deliveryTimeMinutes)}</span>
-                    </div>
-                    <div className="text-[#78716C]">
-                      Daily Demand: <span className="font-semibold text-[#1C1917]">{formatNumber(route.demand)} orders</span>
-                    </div>
-                    <div className="text-[#78716C]">
-                      Fuel: <span className="font-semibold text-[#1C1917]">{route.fuelLiters} L</span> (CO₂: {route.co2Kg} kg)
-                    </div>
-                  </div>
-                </Popup>
-              </Polyline>
+              />
             ))}
 
-          {/* B. Demand Zones */}
-          {showZones &&
-            zones.map((zone) => (
-              <Marker
-                key={zone.id}
-                position={[zone.lat, zone.lng]}
-                icon={createDemandZoneIcon(zone.priority, zone.name)}
-              >
-                <Popup>
-                  <div className="p-1 space-y-2 min-w-[210px] text-xs">
-                    <div className="flex items-center justify-between border-b border-[#E7E2D4] pb-1.5">
-                      <div>
-                        <span className="text-[10px] font-mono text-[#78716C] uppercase">
-                          {zone.id}
-                        </span>
-                        <div className="font-bold text-sm text-[#1C1917] leading-tight">
-                          {zone.name}
-                        </div>
-                      </div>
-                      <span
-                        className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
-                          zone.priority === 'High'
-                            ? 'bg-red-100 text-red-800'
-                            : zone.priority === 'Medium'
-                            ? 'bg-amber-100 text-amber-800'
-                            : 'bg-emerald-100 text-emerald-800'
-                        }`}
-                      >
-                        {zone.priority} Priority
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-[11px]">
-                      <div className="p-1.5 bg-[#FAF7EF] rounded border border-[#E7E2D4]">
-                        <div className="text-[#78716C]">Daily Demand</div>
-                        <div className="font-bold text-[#1C1917]">
-                          {formatNumber(zone.dailyDemand)} orders
-                        </div>
-                      </div>
-                      <div className="p-1.5 bg-[#FAF7EF] rounded border border-[#E7E2D4]">
-                        <div className="text-[#78716C]">Peak Volume</div>
-                        <div className="font-bold text-[#1C1917]">
-                          {formatNumber(zone.peakDemand)}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="text-[11px] space-y-1 text-[#57534E]">
-                      <div className="flex justify-between">
-                        <span>Assigned Hub:</span>
-                        <span className="font-bold text-emerald-800">
-                          {zone.assignedWarehouseId || 'Unassigned'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Est. Delivery Time:</span>
-                        <span className="font-bold text-[#1C1917]">
-                          {formatMinutes(zone.deliveryTimeMinutes)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Transit Distance:</span>
-                        <span className="font-semibold text-[#1C1917]">
-                          {formatDistance(zone.distanceKm)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Traffic Congestion:</span>
-                        <span className="font-semibold text-amber-700">
-                          {(zone.trafficIndex * 10).toFixed(1)} / 10
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </Popup>
-              </Marker>
-            ))}
-
-          {/* C & D. Warehouses: Candidate (gray) vs Selected (green or dynamic color) */}
-          {warehouses.map((wh) => {
-            if (wh.isSelected && !showSelected) return null;
-            if (!wh.isSelected && !showCandidates) return null;
-
-            const isOffline = wh.status === 'Offline';
-            return (
-              <Marker
+          {/* 3. Candidate Warehouses (if enabled) */}
+          {showCandidates &&
+            candidateWarehouses.map((wh) => (
+              <CircleMarker
                 key={wh.id}
-                position={[wh.lat, wh.lng]}
-                icon={createWarehouseIcon(wh.isSelected, isOffline, wh.id, wh.color)}
-                zIndexOffset={wh.isSelected ? 1000 : 500}
+                center={[wh.lat, wh.lng]}
+                radius={8}
+                pathOptions={{
+                  fillColor: '#6B7280',
+                  fillOpacity: 0.7,
+                  color: '#FFFFFF',
+                  weight: 1.5,
+                }}
               >
-                <Popup>
-                  <div className="p-1 space-y-2.5 min-w-[240px] text-xs">
-                    <div className="border-b border-[#E7E2D4] pb-1.5 flex items-start justify-between">
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-extrabold text-sm text-[#1C1917]">
-                            {wh.id} • {wh.name}
+                <Tooltip direction="top">
+                  <span className="text-xs font-medium">{wh.name} (Candidate)</span>
+                </Tooltip>
+              </CircleMarker>
+            ))}
+
+          {/* 4. Active Selected Warehouses: Distinct Color Circle Markers + Prominent Target Halos + Popups */}
+          {showSelected &&
+            selectedWarehouses.map((wh, i) => {
+              const whColor = wh.color || '#15803D';
+
+              return (
+                <React.Fragment key={wh.id}>
+                  {/* Outer Halo Ring (Target/Bullseye Style matching reference image) */}
+                  <CircleMarker
+                    center={[wh.lat, wh.lng]}
+                    radius={haloRadius}
+                    pathOptions={{
+                      fillColor: whColor,
+                      fillOpacity: haloFillOpacity,
+                      color: whColor,
+                      weight: haloWeight,
+                      opacity: haloBorderOpacity,
+                    }}
+                  />
+
+                  {/* Main Warehouse Inner Core Marker */}
+                  <CircleMarker
+                    center={[wh.lat, wh.lng]}
+                    radius={coreRadius}
+                    pathOptions={{
+                      fillColor: whColor,
+                      fillOpacity: 1.0,
+                      color: '#FFFFFF',
+                      weight: coreBorderWeight,
+                      opacity: 1.0,
+                    }}
+                  >
+                    <Tooltip direction="top" offset={[0, -coreRadius - 4]} opacity={0.95}>
+                      <span className="font-bold text-xs" style={{ color: whColor }}>
+                        W{i + 1}: {wh.name}
+                      </span>
+                    </Tooltip>
+                    <Popup>
+                      <div className="p-1 space-y-2 min-w-[250px] text-xs font-sans">
+                        <div className="border-b border-[#E7E2D4] pb-1.5">
+                          <div
+                            className="font-extrabold text-sm"
+                            style={{ color: whColor }}
+                          >
+                            W{i + 1}: {wh.name}
+                          </div>
+                          <p className="text-[11px] text-[#78716C] mt-0.5">{wh.location}</p>
+                        </div>
+
+                        {/* 10-Minute SLA & Delivery Time */}
+                        {wh.slaCompliancePct !== undefined && (
+                          <div className="flex items-center justify-between p-1.5 bg-emerald-50 text-emerald-900 rounded border border-emerald-200">
+                            <span className="font-semibold text-[11px] flex items-center gap-1">
+                              <Zap className="w-3.5 h-3.5 text-emerald-700" />
+                              <span>10-Min SLA:</span>
+                            </span>
+                            <span className="font-extrabold text-xs">
+                              {wh.slaCompliancePct.toFixed(1)}%
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between text-[11px] text-[#57534E]">
+                          <span>⏱️ Avg Delivery Time:</span>
+                          <span className="font-bold text-[#1C1917]">
+                            {(wh.avgDeliveryTime || 0).toFixed(1)} min
                           </span>
                         </div>
-                        <p className="text-[11px] text-[#78716C] mt-0.5">{wh.location}</p>
-                      </div>
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          wh.isSelected
-                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                            : isOffline
-                            ? 'bg-red-100 text-red-800 border border-red-300'
-                            : 'bg-stone-100 text-stone-700 border border-stone-300'
-                        }`}
-                      >
-                        {wh.isSelected ? 'Selected' : isOffline ? 'Offline' : 'Candidate'}
-                      </span>
-                    </div>
 
-                    {/* 10-Minute SLA & Delivery Time */}
-                    {wh.slaCompliancePct !== undefined && (
-                      <div className="flex items-center justify-between p-1.5 bg-emerald-50 text-emerald-900 rounded border border-emerald-200">
-                        <span className="font-semibold text-[11px]">⚡ 10-Min SLA:</span>
-                        <span className="font-extrabold text-xs">{wh.slaCompliancePct.toFixed(1)}%</span>
-                      </div>
-                    )}
-                    {wh.avgDeliveryTime !== undefined && (
-                      <div className="flex items-center justify-between text-[11px] text-[#57534E]">
-                        <span>⏱️ Avg Delivery Time:</span>
-                        <span className="font-bold text-[#1C1917]">{wh.avgDeliveryTime.toFixed(1)} min</span>
-                      </div>
-                    )}
-                    {wh.employeesRequired !== undefined && wh.employeesRequired > 0 && (
-                      <div className="flex items-center justify-between text-[11px] text-[#57534E]">
-                        <span>👥 Delivery Workforce:</span>
-                        <span className="font-bold text-[#9E471A]">{formatNumber(wh.employeesRequired)} drivers</span>
-                      </div>
-                    )}
+                        {wh.employeesRequired !== undefined && wh.employeesRequired > 0 && (
+                          <div className="space-y-0.5">
+                            <div className="flex items-center justify-between text-[11px] text-[#57534E]">
+                              <span className="flex items-center gap-1">
+                                <Users className="w-3 h-3 text-[#9E471A]" />
+                                <span>Delivery Workforce:</span>
+                              </span>
+                              <span className="font-bold text-[#9E471A]">
+                                {formatNumber(wh.employeesRequired)} drivers
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-[#7A7168]">
+                              Wages: ₹1,000/d ({formatINR(wh.employeesRequired * 1000)}/day)
+                            </div>
+                          </div>
+                        )}
 
-                    {/* Capacity & Utilization Bar */}
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[11px]">
-                        <span className="text-[#78716C]">Capacity Utilization:</span>
-                        <span className="font-bold text-[#1C1917]">{wh.utilization}%</span>
-                      </div>
-                      <div className="w-full bg-[#E7E2D4] h-2 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all duration-300 ${
-                            wh.utilization > 85
-                              ? 'bg-amber-600'
-                              : wh.utilization > 0
-                              ? 'bg-emerald-600'
-                              : 'bg-stone-400'
-                          }`}
-                          style={{ width: `${wh.utilization}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Warehouse Metrics Grid */}
-                    <div className="grid grid-cols-2 gap-2 text-[11px]">
-                      <div className="p-2 bg-[#FAF7EF] rounded-lg border border-[#E7E2D4]">
-                        <div className="text-[#78716C]">Daily Demand Served</div>
-                        <div className="font-extrabold text-sm text-[#1C1917] mt-0.5">
-                          {formatNumber(wh.demandServed)}
-                        </div>
-                        <div className="text-[10px] text-[#A8A29E]">of {formatNumber(wh.capacity)} cap</div>
-                      </div>
-                      <div className="p-2 bg-[#FAF7EF] rounded-lg border border-[#E7E2D4]">
-                        <div className="text-[#78716C]">Operating Cost</div>
-                        <div className="font-extrabold text-sm text-[#1C1917] mt-0.5">
-                          {formatINR(wh.operatingCost / 100000)}
-                        </div>
-                        <div className="text-[10px] text-[#A8A29E]">daily lease/fixed</div>
-                      </div>
-                    </div>
-
-                    {/* Assigned Zones List */}
-                    <div className="text-[11px] space-y-1">
-                      <div className="font-semibold text-[#1C1917]">
-                        Assigned Zones ({wh.assignedZones.length}):
-                      </div>
-                      <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
-                        {wh.assignedZones.length > 0 ? (
-                          wh.assignedZones.map((zName) => (
-                            <span
-                              key={zName}
-                              className="px-1.5 py-0.5 bg-[#F5F0E4] text-[#44403C] rounded text-[10px] font-medium"
-                            >
-                              {zName}
+                        {wh.monthlyRent !== undefined && (
+                          <div className="flex items-center justify-between text-[11px] text-[#57534E]">
+                            <span>🏢 Facility Rent:</span>
+                            <span className="font-bold text-[#1C1917]">
+                              {formatINR(wh.monthlyRent)}/mo
                             </span>
-                          ))
-                        ) : (
-                          <span className="text-stone-400 italic">No zones assigned (idle)</span>
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between text-[11px] text-[#57534E]">
+                          <span>📦 Daily Orders Served:</span>
+                          <span className="font-semibold text-[#1C1917]">
+                            {formatNumber(wh.demandServed)}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px] text-[#57534E]">
+                          <span>⚡ Capacity Util:</span>
+                          <span className="font-semibold text-[#1C1917]">
+                            {wh.utilization.toFixed(1)}%
+                          </span>
+                        </div>
+
+                        {wh.costPerSqFt !== undefined && (
+                          <div className="flex items-center justify-between text-[11px] text-[#57534E]">
+                            <span>🏷️ Real Estate Rate:</span>
+                            <span className="font-semibold text-[#1C1917]">
+                              ₹{wh.costPerSqFt.toFixed(0)}/sqft
+                            </span>
+                          </div>
                         )}
                       </div>
-                    </div>
-                  </div>
-                </Popup>
-              </Marker>
-            );
-          })}
+                    </Popup>
+                  </CircleMarker>
+
+                  {/* Warehouse Label Tag (only when p <= 25 to prevent clutter) */}
+                  {numWh <= 25 && (
+                    <Marker
+                      position={[wh.lat, wh.lng]}
+                      icon={L.divIcon({
+                        className: 'warehouse-label-marker',
+                        html: `
+                          <div style="
+                            font-family: 'Plus Jakarta Sans', sans-serif;
+                            font-size: 10px;
+                            font-weight: 700;
+                            color: #1a1a2e;
+                            text-align: center;
+                            text-shadow: 0 1px 3px rgba(255,255,255,0.95);
+                            white-space: nowrap;
+                            pointer-events: none;
+                            position: relative;
+                            top: 14px;
+                            left: 0;
+                            transform: translateX(-50%);
+                          ">W${i + 1}: ${wh.name} (${wh.employeesRequired || 0}👥 · ${(wh.avgDeliveryTime || 0).toFixed(0)}m)</div>
+                        `,
+                        iconSize: [0, 0],
+                        iconAnchor: [0, 0],
+                      })}
+                    />
+                  )}
+                </React.Fragment>
+              );
+            })}
         </MapContainer>
-
-        {/* Map Legend (Top Left Overlay matching screenshot) */}
-        <div className="absolute top-4 left-4 bg-white/95 backdrop-blur-xs border border-[#E8E0CE] rounded-xl p-3 shadow-md z-[1000] text-xs max-w-xs pointer-events-auto">
-          <div className="font-bold text-[#1F1A16] mb-2 flex items-center justify-between text-[11px] uppercase tracking-wider">
-            <span>Map Legend</span>
-            <span className="text-[10px] text-[#8C592C] font-mono font-bold">Namma Warehouse</span>
-          </div>
-
-          <div className="space-y-1.5 text-[11px]">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#EF4444]"></span>
-              <span className="text-[#5C544C]">High Demand</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B]"></span>
-              <span className="text-[#5C544C]">Medium Demand</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#FBBF24]"></span>
-              <span className="text-[#5C544C]">Low Demand</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-3.5 h-3.5 rounded-md bg-emerald-600 border border-white flex items-center justify-center text-white text-[8px]">
-                <WarehouseIcon className="w-2.5 h-2.5" />
-              </span>
-              <span className="text-[#1F1A16] font-medium">Selected Warehouse</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-3.5 h-3.5 rounded-md bg-[#57534E] border border-white flex items-center justify-center text-white text-[8px]">
-                <WarehouseIcon className="w-2.5 h-2.5" />
-              </span>
-              <span className="text-[#5C544C]">Candidate Warehouse</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-4 h-0.5 bg-emerald-600"></span>
-              <span className="text-[#5C544C]">Delivery Route</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-4 h-0.5 border-t border-dashed border-[#A8A29E]"></span>
-              <span className="text-[#5C544C]">Zone Boundary</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Floating Warehouse Callout Card (Bottom Left) */}
-        <div className="absolute bottom-4 left-4 bg-white/95 backdrop-blur-xs border border-[#E8E0CE] rounded-xl p-3 shadow-md z-[1000] text-xs pointer-events-auto">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="font-bold text-emerald-800 text-xs">W2 (Selected)</span>
-          </div>
-          <p className="text-[11px] text-[#5C544C] mt-0.5 font-medium">
-            Serves 8 zones • 82% capacity
-          </p>
-        </div>
       </div>
-
     </div>
   );
-};
+});

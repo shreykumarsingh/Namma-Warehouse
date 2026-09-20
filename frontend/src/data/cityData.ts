@@ -517,11 +517,14 @@ export const DEFAULT_OPTIMIZATION_CONFIG: OptimizationConfig = {
   priority: 'balanced',
   trafficLevel: 'medium',
   disabledWarehouseIds: [],
-  // 5 Core Parameters:
-  budgetMonthly: 1500000,
-  budgetMonthlyLakhs: 15.0, // 15 Lakhs
+  // 5 Core Parameters matching backend index.html:
+  budgetMonthly: 0,        // 0 = Unlimited / Unconstrained
+  budgetMonthlyLakhs: 0,   // 0 = Unlimited
   propertySizeSqft: 2500,  // 2,500 sq.ft
   petrolCostPerKm: 2.0,    // ₹2.0 / km
-  batchSize: 3,            // 3 deliveries per trip
+  batchSize: 23,           // 23 deliveries per driver / day (range 15-30)
   minDispersionKm: 6.5,    // 6.5 km minimum separation between hubs
+  evFleetPct: 0.0,
 };
+
+

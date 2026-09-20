@@ -71,17 +71,19 @@ def root():
 
 @app.get("/app", summary="Visualization Frontend")
 def serve_frontend():
-    """Serves the GRIDPOINT interactive map visualization."""
-    index_path = os.path.join(BASE_DIR, "index.html")
-    return FileResponse(
-        index_path,
-        media_type="text/html",
-        headers={
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Pragma": "no-cache",
-            "Expires": "0"
-        }
-    )
+    """Serves the frontend dashboard."""
+    index_path = os.path.join(FRONTEND_DIST, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(
+            index_path,
+            media_type="text/html",
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
+    return {"status": "ok", "message": "Frontend running via Vite at http://localhost:3000 or run 'npm run build' in frontend/"}
 
 @app.get("/api/city", response_model=CityResponse, summary="Fetch City Grid & Metadata")
 def get_city():
@@ -122,18 +124,22 @@ def get_tradeoff(
     property_size_sqft: float = Query(2500.0, description="Warehouse size in sq.ft"),
     petrol_cost_per_km: float = Query(2.0, description="Fuel cost rate"),
     batch_size: int = Query(23, description="Deliveries per driver per day (default: 23)"),
-    min_dispersion_km: float = Query(6.5, description="Min separation distance between hubs in km")
+    min_dispersion_km: float = Query(6.5, description="Min separation distance between hubs in km"),
+    target_p: Optional[int] = Query(None, description="Current chosen warehouse count to highlight"),
+    ev_fleet_pct: float = Query(0.0, description="EV fleet percentage")
 ):
     """
-    Generates the U-curve trade-off data showing how total cost evolves
-    as warehouse count p scales from 1 to 5 under spatial dispersion constraints.
+    Generates the U-curve trade-off data showing how total operational cost evolves
+    across candidate warehouse counts under spatial dispersion and EV green fleet constraints.
     """
     return solver.compute_tradeoff(
         budget_monthly=budget_monthly,
         property_size_sqft=property_size_sqft,
         petrol_cost_per_km=petrol_cost_per_km,
         batch_size=batch_size,
-        min_dispersion_km=min_dispersion_km
+        min_dispersion_km=min_dispersion_km,
+        target_p=target_p,
+        ev_fleet_pct=ev_fleet_pct
     )
 
 if __name__ == "__main__":

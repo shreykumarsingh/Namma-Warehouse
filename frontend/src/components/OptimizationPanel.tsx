@@ -1,23 +1,12 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
-  Sparkles,
-  CheckCircle2,
-  Sliders,
   RotateCcw,
-  IndianRupee,
-  Maximize,
-  Fuel,
-  Package,
-  Compass,
-  Building2,
-  Layers,
+  Play,
+  AlertCircle,
+  CheckCircle2,
 } from 'lucide-react';
-import {
-  OptimizationConfig,
-  OptimizationPriority,
-  TrafficLevel,
-  OptimizationResult,
-} from '../types';
+import { OptimizationConfig, OptimizationResult } from '../types';
+import { formatRupeesRaw, formatNumber } from '../utils/formatters';
 
 interface OptimizationPanelProps {
   config: OptimizationConfig;
@@ -30,7 +19,7 @@ interface OptimizationPanelProps {
   onReset: () => void;
 }
 
-export const OptimizationPanel: React.FC<OptimizationPanelProps> = ({
+export const OptimizationPanel: React.FC<OptimizationPanelProps> = React.memo(({
   config,
   onChangeConfig,
   onRunOptimization,
@@ -39,498 +28,335 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = ({
   lastResult,
   onReset,
 }) => {
-  const [activeTab, setActiveTab] = useState<'parameters' | 'advanced' | 'scenarios'>('parameters');
-
   const stepsList = [
-    'Submitting 5 parameters to Discrete Spatial Solver...',
-    'Querying BBMP municipal road network & 800 candidate nodes...',
-    'Enforcing D_min spatial dispersion & budget constraints...',
-    'Computing 3-delivery milk-run routes & fuel burn...',
-    'Generating optimal hub locations...',
+    'Connecting to spatial solver...',
+    'Evaluating 800 candidate nodes...',
+    'Enforcing dispersion & budget constraints...',
+    'Computing routes & fuel expenditure...',
+    'Finalizing facility placements...',
   ];
 
-  // Derive current 5 parameter values with fallbacks
+  // Parameter derivations
+  const numHubs = config.maxWarehouses ?? 3;
   const budgetLakhs =
     config.budgetMonthlyLakhs !== undefined
-      ? config.budgetMonthlyLakhs
+      ? Number(config.budgetMonthlyLakhs.toFixed(1))
       : config.budgetMonthly
       ? Number((config.budgetMonthly / 100000).toFixed(1))
-      : 15.0;
-
+      : 0;
   const propertySize = config.propertySizeSqft ?? 2500;
-  const petrolCost = config.petrolCostPerKm ?? 2.0;
-  const batchSize = config.batchSize ?? 3;
-  const minDispersion = config.minDispersionKm ?? 6.5;
-  const numHubs = config.maxWarehouses ?? 3;
+  const petrolCost = Number((config.petrolCostPerKm ?? 2.0).toFixed(1));
+  const batchSize =
+    config.batchSize && config.batchSize >= 12
+      ? config.batchSize
+      : 23;
+  const minDispersion = Number((config.minDispersionKm ?? 6.5).toFixed(1));
+  const evFleetPct = config.evFleetPct ?? (config.evShare ?? 0);
+
+  // Auto-dispersion recommendation
+  const handleHubChange = (val: number) => {
+    const p = Math.max(1, Math.min(100, Math.round(val)));
+    let recDisp = 0.8;
+    if (p <= 4) recDisp = 6.5;
+    else if (p <= 8) recDisp = 4.5;
+    else if (p <= 15) recDisp = 3.0;
+    else if (p <= 30) recDisp = 2.0;
+    else if (p <= 60) recDisp = 1.2;
+
+    onChangeConfig({
+      maxWarehouses: p,
+      minDispersionKm: recDisp,
+    });
+  };
+
+  const slaPct = lastResult?.kpi?.slaCompliancePercent ?? 0;
+  const avgTime = lastResult?.kpi?.avgDeliveryTimeMin ?? 0;
+  const monthlyRent =
+    lastResult?.costs?.monthly_rent ||
+    (lastResult?.warehouses
+      ? lastResult.warehouses.reduce((s, w) => s + (w.monthlyRent || 0), 0)
+      : 0);
+  const totalEmployees =
+    lastResult?.kpi?.totalEmployees ||
+    (lastResult?.warehouses
+      ? Math.round(lastResult.warehouses.reduce((s, w) => s + (w.demandServed || 0), 0) / batchSize)
+      : 0);
 
   return (
-    <div className="bg-white rounded-2xl border border-[#E8E0CE] shadow-xs flex flex-col h-full overflow-hidden">
-      {/* Panel Header */}
-      <div className="p-4 sm:p-5 border-b border-[#E8E0CE] flex items-center justify-between shrink-0 bg-[#FAF5E8]/70">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-[#9E471A] text-white flex items-center justify-center shadow-xs">
-            <Sliders className="w-4 h-4" />
+    <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 flex flex-col justify-between w-full h-full xl:h-[740px] text-xs select-none">
+      {/* Header */}
+      <div className="flex items-center justify-between pb-3 mb-3 border-b border-gray-100 shrink-0">
+        <h2 className="font-semibold text-sm text-gray-900">
+          Optimization Parameters
+        </h2>
+        <button
+          type="button"
+          onClick={onReset}
+          className="text-xs text-gray-400 hover:text-gray-700 flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-50 transition-colors cursor-pointer"
+          title="Reset parameters to baseline"
+        >
+          <RotateCcw className="w-3.5 h-3.5" />
+          <span>Reset</span>
+        </button>
+      </div>
+
+      {/* Form Controls */}
+      <div className="space-y-3 flex-1 flex flex-col justify-between py-0.5">
+        {/* 1. Number of Warehouses */}
+        <div>
+          <div className="flex justify-between items-center mb-1.5">
+            <label className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">
+              Number of Warehouses
+            </label>
+            <span className="font-semibold text-violet-600 font-mono text-sm bg-violet-50 px-2 py-0.5 rounded">
+              {numHubs}
+            </span>
           </div>
-          <div>
-            <h3 className="font-bold text-sm sm:text-base text-[#1F1A16] font-serif">
-              Facility Optimization Controls
-            </h3>
-            <p className="text-[11px] text-[#7A7168]">
-              5-Parameter Discrete Spatial Solver
-            </p>
+          <input
+            type="range"
+            min={1}
+            max={100}
+            value={numHubs}
+            onChange={(e) => handleHubChange(parseInt(e.target.value))}
+            className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-violet-600"
+          />
+          <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
+            <span>1</span>
+            <span>100</span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onReset}
-            className="inline-flex items-center gap-1 text-xs text-[#7A7168] hover:text-[#1F1A16] px-2.5 py-1.5 rounded-lg hover:bg-white border border-transparent hover:border-[#E8E0CE] transition-all cursor-pointer"
-            title="Reset parameters to baseline"
-          >
-            <RotateCcw className="w-3 h-3" />
-            <span className="hidden sm:inline">Reset</span>
-          </button>
+        {/* 2. Monthly Budget */}
+        <InputField
+          label="Monthly Budget (₹ Lakhs)"
+          sublabel="0 = unlimited"
+          type="number"
+          min={0}
+          step={1}
+          value={budgetLakhs}
+          onChange={(val) => {
+            const v = parseFloat(val) || 0;
+            onChangeConfig({
+              budgetMonthlyLakhs: v,
+              budgetMonthly: v > 0 ? v * 100000 : 0,
+            });
+          }}
+        />
+
+        {/* 3. Property Size */}
+        <InputField
+          label="Property Size (sq.ft)"
+          type="number"
+          min={500}
+          max={20000}
+          step={100}
+          value={propertySize}
+          onChange={(val) => onChangeConfig({ propertySizeSqft: parseInt(val) || 2500 })}
+        />
+
+        {/* 4. Petrol Cost */}
+        <InputField
+          label="Petrol Cost (₹/km)"
+          type="number"
+          min={0.5}
+          max={10}
+          step={0.5}
+          value={petrolCost}
+          onChange={(val) => onChangeConfig({ petrolCostPerKm: parseFloat(val) || 2.0 })}
+        />
+
+        {/* 5. Deliveries per Driver */}
+        <div>
+          <div className="flex justify-between items-center mb-1.5">
+            <label className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">
+              Deliveries per Driver / Day
+            </label>
+            <span className="font-semibold text-violet-600 font-mono text-sm bg-violet-50 px-2 py-0.5 rounded">
+              {batchSize}
+            </span>
+          </div>
+          <input
+            type="range"
+            min={15}
+            max={30}
+            value={batchSize}
+            onChange={(e) => onChangeConfig({ batchSize: parseInt(e.target.value) || 23 })}
+            className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-violet-600"
+          />
+          <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
+            <span>15</span>
+            <span>30</span>
+          </div>
+        </div>
+
+        {/* 6. Min Hub Separation */}
+        <InputField
+          label="Min Hub Separation (km)"
+          type="number"
+          min={0}
+          max={20}
+          step={0.5}
+          value={minDispersion}
+          onChange={(val) => onChangeConfig({ minDispersionKm: parseFloat(val) || 0.8 })}
+        />
+
+        {/* 7. EV Fleet % */}
+        <div>
+          <div className="flex justify-between items-center mb-1.5">
+            <label className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">
+              EV Fleet Share
+            </label>
+            <span className="font-semibold text-emerald-600 font-mono text-sm">
+              {evFleetPct}%
+            </span>
+          </div>
+          <div className="flex items-center gap-2 mb-1.5">
+            <button
+              type="button"
+              onClick={() => onChangeConfig({ evFleetPct: 0, evShare: 0 })}
+              className={`flex-1 py-1.5 rounded text-xs font-medium border transition-colors cursor-pointer ${
+                evFleetPct === 0
+                  ? 'bg-violet-600 text-white border-violet-600'
+                  : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+              }`}
+            >
+              100% Petrol
+            </button>
+            <button
+              type="button"
+              onClick={() => onChangeConfig({ evFleetPct: 100, evShare: 100 })}
+              className={`flex-1 py-1.5 rounded text-xs font-medium border transition-colors cursor-pointer ${
+                evFleetPct === 100
+                  ? 'bg-emerald-600 text-white border-emerald-600'
+                  : 'bg-gray-50 text-emerald-700 border-gray-200 hover:bg-emerald-50'
+              }`}
+            >
+              100% EV
+            </button>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={evFleetPct}
+            onChange={(e) => {
+              const val = parseFloat(e.target.value);
+              onChangeConfig({ evFleetPct: val, evShare: val });
+            }}
+            className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+          />
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-[#E8E0CE] bg-[#FAF5E8]/40 p-2 gap-1.5 text-xs">
-        <button
-          onClick={() => setActiveTab('parameters')}
-          className={`flex-1 py-2 px-3 font-bold text-center rounded-xl transition-all capitalize text-xs cursor-pointer ${
-            activeTab === 'parameters'
-              ? 'bg-[#FDE89C] text-[#3D270C] shadow-2xs border border-amber-300'
-              : 'text-[#7A7168] hover:text-[#1F1A16] hover:bg-white/70'
-          }`}
-        >
-          5 Core Parameters
-        </button>
-        <button
-          onClick={() => setActiveTab('advanced')}
-          className={`flex-1 py-2 px-3 font-bold text-center rounded-xl transition-all capitalize text-xs cursor-pointer ${
-            activeTab === 'advanced'
-              ? 'bg-[#FDE89C] text-[#3D270C] shadow-2xs border border-amber-300'
-              : 'text-[#7A7168] hover:text-[#1F1A16] hover:bg-white/70'
-          }`}
-        >
-          Network Constraints
-        </button>
-        <button
-          onClick={() => setActiveTab('scenarios')}
-          className={`flex-1 py-2 px-3 font-bold text-center rounded-xl transition-all capitalize text-xs cursor-pointer ${
-            activeTab === 'scenarios'
-              ? 'bg-[#FDE89C] text-[#3D270C] shadow-2xs border border-amber-300'
-              : 'text-[#7A7168] hover:text-[#1F1A16] hover:bg-white/70'
-          }`}
-        >
-          What-If Stress Test
-        </button>
-      </div>
-
-      {/* Form Content */}
-      <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1 text-xs">
-        {activeTab === 'parameters' && (
-          <div className="space-y-4.5">
-            {/* PARAMETER 1: Monthly Budget in Lakhs */}
-            <div className="p-3 bg-[#FAF5E8]/50 rounded-xl border border-[#E8DFC9] space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-[#1F1A16] flex items-center gap-1.5">
-                  <IndianRupee className="w-3.5 h-3.5 text-[#9E471A]" />
-                  <span>1. Monthly Budget (in ₹ Lakhs)</span>
-                </label>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="number"
-                    min="3"
-                    max="100"
-                    step="0.5"
-                    value={budgetLakhs}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value) || 0;
-                      onChangeConfig({
-                        budgetMonthlyLakhs: val,
-                        budgetMonthly: val * 100000,
-                      });
-                    }}
-                    className="w-16 px-2 py-0.5 text-right font-mono font-bold text-xs bg-white border border-[#E8E0CE] rounded-md text-[#9E471A]"
-                  />
-                  <span className="text-[11px] font-bold text-[#7A7168]">L / mo</span>
-                </div>
-              </div>
-              <input
-                type="range"
-                min="3"
-                max="50"
-                step="0.5"
-                value={budgetLakhs}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  onChangeConfig({
-                    budgetMonthlyLakhs: val,
-                    budgetMonthly: val * 100000,
-                  });
-                }}
-                className="w-full accent-[#9E471A] cursor-pointer h-2 bg-[#E8DEC7] rounded-lg"
-              />
-              <div className="flex items-center justify-between text-[10px] text-[#A8A29E]">
-                <span>₹ 3 L</span>
-                <span>₹ 15 L (Baseline)</span>
-                <span>₹ 30 L</span>
-                <span>₹ 50 L</span>
-              </div>
-            </div>
-
-            {/* PARAMETER 2: Property Size in sq.ft */}
-            <div className="p-3 bg-[#FAF5E8]/50 rounded-xl border border-[#E8DFC9] space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-[#1F1A16] flex items-center gap-1.5">
-                  <Maximize className="w-3.5 h-3.5 text-[#9E471A]" />
-                  <span>2. Property Size (sq.ft)</span>
-                </label>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="number"
-                    min="500"
-                    max="15000"
-                    step="250"
-                    value={propertySize}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value) || 1000;
-                      onChangeConfig({ propertySizeSqft: val });
-                    }}
-                    className="w-20 px-2 py-0.5 text-right font-mono font-bold text-xs bg-white border border-[#E8E0CE] rounded-md text-[#9E471A]"
-                  />
-                  <span className="text-[11px] font-bold text-[#7A7168]">sq.ft</span>
-                </div>
-              </div>
-              <input
-                type="range"
-                min="500"
-                max="10000"
-                step="250"
-                value={propertySize}
-                onChange={(e) => onChangeConfig({ propertySizeSqft: parseFloat(e.target.value) })}
-                className="w-full accent-[#9E471A] cursor-pointer h-2 bg-[#E8DEC7] rounded-lg"
-              />
-              <div className="flex items-center justify-between text-[10px] text-[#A8A29E]">
-                <span>500 sq.ft</span>
-                <span>2,500 sq.ft (Standard)</span>
-                <span>5,000 sq.ft</span>
-                <span>10,000 sq.ft</span>
-              </div>
-            </div>
-
-            {/* PARAMETER 3: Petrol Cost per km */}
-            <div className="p-3 bg-[#FAF5E8]/50 rounded-xl border border-[#E8DFC9] space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-[#1F1A16] flex items-center gap-1.5">
-                  <Fuel className="w-3.5 h-3.5 text-[#9E471A]" />
-                  <span>3. Petrol Cost (₹ / km)</span>
-                </label>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="number"
-                    min="0.5"
-                    max="10"
-                    step="0.1"
-                    value={petrolCost}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value) || 1.0;
-                      onChangeConfig({ petrolCostPerKm: val });
-                    }}
-                    className="w-16 px-2 py-0.5 text-right font-mono font-bold text-xs bg-white border border-[#E8E0CE] rounded-md text-[#9E471A]"
-                  />
-                  <span className="text-[11px] font-bold text-[#7A7168]">₹ / km</span>
-                </div>
-              </div>
-              <input
-                type="range"
-                min="0.5"
-                max="8.0"
-                step="0.1"
-                value={petrolCost}
-                onChange={(e) => onChangeConfig({ petrolCostPerKm: parseFloat(e.target.value) })}
-                className="w-full accent-[#9E471A] cursor-pointer h-2 bg-[#E8DEC7] rounded-lg"
-              />
-              <div className="flex items-center justify-between text-[10px] text-[#A8A29E]">
-                <span>₹ 0.5/km (EV)</span>
-                <span>₹ 2.0/km (Standard 2W)</span>
-                <span>₹ 5.0/km (Van)</span>
-                <span>₹ 8.0/km</span>
-              </div>
-            </div>
-
-            {/* PARAMETER 4: Deliveries per Driver / Day */}
-            <div className="p-3 bg-[#FAF5E8]/50 rounded-xl border border-[#E8DFC9] space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-[#1F1A16] flex items-center gap-1.5">
-                  <Package className="w-3.5 h-3.5 text-[#9E471A]" />
-                  <span>4. Deliveries per Driver / Day (15 to 30)</span>
-                </label>
-                <span className="font-mono font-bold text-xs bg-white border border-[#E8E0CE] px-2.5 py-0.5 rounded-md text-[#9E471A]">
-                  {batchSize >= 12 ? batchSize : 23} drops / driver
-                </span>
-              </div>
-              <input
-                type="range"
-                min="15"
-                max="30"
-                step="1"
-                value={batchSize >= 12 ? batchSize : 23}
-                onChange={(e) => onChangeConfig({ batchSize: parseInt(e.target.value, 10) })}
-                className="w-full accent-[#9E471A] cursor-pointer h-2 bg-[#E8DEC7] rounded-lg"
-              />
-              <div className="grid grid-cols-4 gap-1 pt-1">
-                {[18, 20, 23, 28].map((b) => (
-                  <button
-                    key={b}
-                    type="button"
-                    onClick={() => onChangeConfig({ batchSize: b })}
-                    className={`py-1 text-[11px] font-semibold rounded-lg border transition-all cursor-pointer ${
-                      (batchSize >= 12 ? batchSize : 23) === b
-                        ? 'bg-[#9E471A] text-white border-[#9E471A] shadow-2xs'
-                        : 'bg-white text-[#5C5248] border-[#E8E0CE] hover:bg-[#FAF5E8]'
-                    }`}
-                  >
-                    {b} drops {b === 23 ? '(Avg)' : ''}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* PARAMETER 5: Minimum Hub Separation (km) */}
-            <div className="p-3 bg-[#FAF5E8]/50 rounded-xl border border-[#E8DFC9] space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-[#1F1A16] flex items-center gap-1.5">
-                  <Compass className="w-3.5 h-3.5 text-[#9E471A]" />
-                  <span>5. Minimum Hub Separation (km)</span>
-                </label>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="number"
-                    min="1"
-                    max="20"
-                    step="0.5"
-                    value={minDispersion}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value) || 2.0;
-                      onChangeConfig({ minDispersionKm: val });
-                    }}
-                    className="w-16 px-2 py-0.5 text-right font-mono font-bold text-xs bg-white border border-[#E8E0CE] rounded-md text-[#9E471A]"
-                  />
-                  <span className="text-[11px] font-bold text-[#7A7168]">km</span>
-                </div>
-              </div>
-              <input
-                type="range"
-                min="1.0"
-                max="15.0"
-                step="0.5"
-                value={minDispersion}
-                onChange={(e) => onChangeConfig({ minDispersionKm: parseFloat(e.target.value) })}
-                className="w-full accent-[#9E471A] cursor-pointer h-2 bg-[#E8DEC7] rounded-lg"
-              />
-              <div className="flex items-center justify-between text-[10px] text-[#A8A29E]">
-                <span>1.0 km (Dense)</span>
-                <span>6.5 km (Optimal Dispersion)</span>
-                <span>12.0 km</span>
-                <span>15.0 km</span>
-              </div>
-              <p className="text-[10.5px] text-[#7A7168] leading-tight pt-0.5">
-                Enforces spatial dispersion so warehouses do not clump in the same neighborhood.
-              </p>
-            </div>
-
-            {/* Hub Count (p): Scales from 1 to 100 */}
-            <div className="p-3 bg-white rounded-xl border border-[#E8DFC9] space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-[#1F1A16] flex items-center gap-1.5">
-                  <Building2 className="w-3.5 h-3.5 text-[#9E471A]" />
-                  <span>Number of Hubs to Place (p: 1 to 100)</span>
-                </label>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="number"
-                    min="1"
-                    max="100"
-                    step="1"
-                    value={numHubs}
-                    onChange={(e) => {
-                      const val = Math.max(1, Math.min(100, parseInt(e.target.value, 10) || 1));
-                      onChangeConfig({ maxWarehouses: val });
-                    }}
-                    className="w-16 px-2 py-0.5 text-right font-mono font-bold text-xs bg-white border border-[#E8E0CE] rounded-md text-[#9E471A]"
-                  />
-                  <span className="text-[11px] font-bold text-[#7A7168]">Hubs</span>
-                </div>
-              </div>
-              <input
-                type="range"
-                min="1"
-                max="100"
-                step="1"
-                value={numHubs}
-                onChange={(e) => onChangeConfig({ maxWarehouses: parseInt(e.target.value, 10) })}
-                className="w-full accent-[#9E471A] cursor-pointer h-2 bg-[#E8DEC7] rounded-lg"
-              />
-              <div className="grid grid-cols-6 gap-1 pt-1">
-                {[3, 10, 25, 50, 75, 100].map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => onChangeConfig({ maxWarehouses: p })}
-                    className={`py-1.5 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
-                      numHubs === p
-                        ? 'bg-[#9E471A] text-white border-[#9E471A] shadow-xs'
-                        : 'bg-[#FAF5E8]/60 text-[#5C5248] border-[#E8E0CE] hover:bg-white'
-                    }`}
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'advanced' && (
-          <div className="space-y-4">
-            <div className="p-3 bg-[#FAF5E8] rounded-xl border border-[#E8DFC9] space-y-2">
-              <span className="font-bold text-[#1F1A16] block">Mappls Spatial Road Network</span>
-              <p className="text-[#5C5248] leading-relaxed text-[11px]">
-                Calculates actual road distances with 1.4x circuity factor and dynamic urban corridor traffic delays across 800 discrete BBMP nodes.
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-[#5C5248] block">
-                Target Max Delivery SLA
-              </label>
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-[#1F1A16] font-mono">
-                  {config.maxDeliveryTime} minutes
-                </span>
-              </div>
-              <input
-                type="range"
-                min="20"
-                max="50"
-                step="5"
-                value={config.maxDeliveryTime}
-                onChange={(e) => onChangeConfig({ maxDeliveryTime: Number(e.target.value) })}
-                className="w-full accent-[#9E471A] cursor-pointer h-2 bg-[#E8DEC7] rounded-lg"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-[#5C5248] block">
-                Congestion Level
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                {(['low', 'medium', 'high'] as TrafficLevel[]).map((lvl) => (
-                  <button
-                    key={lvl}
-                    type="button"
-                    onClick={() => onChangeConfig({ trafficLevel: lvl })}
-                    className={`py-2 text-center rounded-xl border capitalize text-xs font-bold transition-all cursor-pointer ${
-                      config.trafficLevel === lvl
-                        ? 'bg-[#FDE89C] text-[#3D270C] border-amber-400 shadow-2xs'
-                        : 'border-[#E8E0CE] bg-[#FAF5E8]/60 text-[#7A7168] hover:bg-[#FAF5E8]'
-                    }`}
-                  >
-                    {lvl}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'scenarios' && (
-          <div className="space-y-3">
-            <button
-              onClick={() => {
-                onChangeConfig({
-                  budgetMonthlyLakhs: 20.0,
-                  petrolCostPerKm: 2.5,
-                  minDispersionKm: 8.0,
-                  maxWarehouses: 4,
-                });
-              }}
-              className="w-full p-3.5 bg-[#FAF5E8] hover:bg-[#FAF3E3] border border-[#E8E0CE] rounded-xl text-left transition-colors cursor-pointer"
-            >
-              <div className="font-bold text-[#1F1A16] flex justify-between text-xs">
-                <span>Diwali Festival Expansion</span>
-                <span className="text-amber-900 text-[11px] bg-[#FDE89C] px-2 py-0.5 rounded font-bold">Preset</span>
-              </div>
-              <p className="text-[11px] text-[#7A7168] mt-1">
-                Budget ₹20L • 4 Hubs • 8.0km Separation
-              </p>
-            </button>
-
-            <button
-              onClick={() => {
-                onChangeConfig({
-                  budgetMonthlyLakhs: 10.0,
-                  propertySizeSqft: 2000,
-                  batchSize: 4,
-                  minDispersionKm: 5.0,
-                  maxWarehouses: 2,
-                });
-              }}
-              className="w-full p-3.5 bg-[#FAF5E8] hover:bg-[#FAF3E3] border border-[#E8E0CE] rounded-xl text-left transition-colors cursor-pointer"
-            >
-              <div className="font-bold text-[#1F1A16] flex justify-between text-xs">
-                <span>Lean Quick-Commerce Hubs</span>
-                <span className="text-emerald-900 text-[11px] bg-emerald-100 px-2 py-0.5 rounded font-bold">Lean</span>
-              </div>
-              <p className="text-[11px] text-[#7A7168] mt-1">
-                Budget ₹10L • 2 Hubs • 2,000 sq.ft • 4 drops/trip
-              </p>
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Button: Generate Hub Locations */}
-      <div className="p-4 sm:p-5 border-t border-[#E8E0CE] bg-[#FAF5E8]/70 shrink-0 space-y-2.5">
+      {/* Action Section */}
+      <div className="pt-3 space-y-2 shrink-0">
         {isOptimizing ? (
-          <div className="p-3 bg-white rounded-xl border border-amber-300 shadow-2xs space-y-2">
-            <div className="flex items-center justify-between text-xs font-bold text-amber-900">
-              <span className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
-                OPTIMIZING FACILITY LOCATIONS...
+          <div className="p-3 bg-violet-50 rounded-lg border border-violet-200 text-xs space-y-1.5 text-violet-800">
+            <div className="flex items-center justify-between font-semibold">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-violet-500 animate-ping" />
+                Optimizing...
               </span>
-              <span className="font-mono text-xs">
+              <span className="font-mono">
                 {Math.min(100, Math.round(((stepIndex + 1) / stepsList.length) * 100))}%
               </span>
             </div>
-            <div className="w-full bg-[#E8DEC7] h-2 rounded-full overflow-hidden">
+            <div className="w-full bg-violet-200 h-1.5 rounded-full overflow-hidden">
               <div
-                className="h-full bg-[#9E471A] transition-all duration-300"
+                className="h-full bg-violet-600 transition-all duration-300 rounded-full"
                 style={{ width: `${Math.min(100, ((stepIndex + 1) / stepsList.length) * 100)}%` }}
               />
             </div>
-            <p className="text-xs text-[#7A7168] truncate">{stepsList[stepIndex]}</p>
+            <p className="text-[11px] text-violet-600 truncate">{stepsList[stepIndex]}</p>
           </div>
         ) : (
           <button
-            id="run-optimization-btn"
+            type="button"
+            id="btn-optimize-left"
             onClick={onRunOptimization}
-            className="w-full py-3.5 px-5 bg-gradient-to-r from-[#9E471A] via-[#8F3E15] to-[#7B3410] hover:from-[#8A3B12] hover:to-[#6F2E0D] text-white font-bold text-xs sm:text-sm rounded-xl shadow-md hover:shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2 uppercase tracking-wider cursor-pointer"
+            className="w-full py-2.5 px-4 bg-violet-600 hover:bg-violet-700 text-white font-semibold text-sm rounded-lg shadow-sm hover:shadow transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
           >
-            <Sparkles className="w-4 h-4 text-amber-300" />
-            <span>Generate Hub Locations</span>
+            <Play className="w-4 h-4" fill="currentColor" />
+            <span>Run Optimization</span>
           </button>
         )}
 
-        {lastResult && !isOptimizing && (
-          <div className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span className="truncate font-medium">{lastResult.summaryMessage}</span>
+        {/* Status */}
+        {lastResult?.status === 'infeasible' ? (
+          <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-800 space-y-1">
+            <div className="flex items-center gap-1.5 font-semibold">
+              <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+              <span>Infeasible: {lastResult.infeasibleReason || 'Constraint violation'}</span>
+            </div>
+            <p className="text-[11px] text-red-600 leading-tight">
+              {lastResult.infeasibleMessage}
+            </p>
+            {lastResult.suggestedBudget !== undefined && (
+              <div className="pt-1 text-[11px] font-medium border-t border-red-200 flex justify-between">
+                <span>Suggested budget:</span>
+                <span className="font-mono">₹{(lastResult.suggestedBudget / 100000).toFixed(1)} L/mo</span>
+              </div>
+            )}
+          </div>
+        ) : lastResult && !isOptimizing ? (
+          <div className="p-2.5 rounded-lg bg-gray-50 border border-gray-200 text-xs text-gray-600 space-y-0.5">
+            <div className="text-emerald-700 font-semibold flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+              <span>{lastResult.selectedWarehouseIds.length} hubs placed</span>
+            </div>
+            <div className="text-gray-600">
+              SLA: <strong className={slaPct >= 80 ? 'text-emerald-700' : 'text-gray-900'}>{slaPct.toFixed(1)}%</strong> · Avg: {avgTime.toFixed(1)} min
+            </div>
+            <div className="text-gray-500">
+              Rent: {formatRupeesRaw(monthlyRent)}/mo · {formatNumber(totalEmployees)} drivers
+            </div>
+          </div>
+        ) : (
+          <div className="p-2.5 rounded-lg bg-gray-50 border border-gray-200 text-xs text-gray-400 text-center">
+            Adjust parameters and run optimization.
           </div>
         )}
       </div>
     </div>
   );
-};
+});
+
+/** Reusable input field */
+function InputField({
+  label,
+  sublabel,
+  type,
+  min,
+  max,
+  step,
+  value,
+  onChange,
+}: {
+  label: string;
+  sublabel?: string;
+  type: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  value: number;
+  onChange: (val: string) => void;
+}) {
+  return (
+    <div>
+      <label className="block mb-1.5 text-[11px] font-medium text-gray-500 uppercase tracking-wide">
+        {label}
+        {sublabel && <span className="normal-case tracking-normal font-normal text-gray-400 ml-1">({sublabel})</span>}
+      </label>
+      <input
+        type={type}
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-3 py-1.5 text-sm bg-white border border-gray-200 rounded-md text-gray-900 font-medium focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+      />
+    </div>
+  );
+}

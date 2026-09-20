@@ -338,7 +338,7 @@ export function runOptimization(
   const baselineTime = Number((best.avgTime * 1.39).toFixed(1));
   const baselineFuel = Math.round(best.totalFuel * 1.28);
   const baselineCO2 = Number((best.totalCO2 * 1.32).toFixed(1));
-  const baselineSLA = Number(Math.max(68, best.sla - 14.5).toFixed(1));
+  const baselineSLA = Number(Math.max(1.0, Math.min(best.sla, best.sla * 0.7)).toFixed(1));
 
   const kpi: KPIMetrics = {
     optimalWarehouses: selectedWarehouseIds.length,

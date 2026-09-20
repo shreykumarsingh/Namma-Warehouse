@@ -18,7 +18,9 @@ import {
   BENGALURU_DEMAND_ZONES,
   DEFAULT_OPTIMIZATION_CONFIG,
 } from '../data/cityData';
+import { BENGALURU_800_POINTS } from '../data/rawBengaluruPoints';
 import { runOptimization } from '../utils/solver';
+import { calculateDeliveryTimeMinutes } from '../utils/geo';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) || '/api';
 
@@ -166,10 +168,11 @@ class GridpointApiService {
           : Number((this.currentConfig.fuelPrice / 50.0).toFixed(2)) || 2.0;
 
       const propSize = this.currentConfig.propertySizeSqft || 2500.0;
-      const bSize = this.currentConfig.batchSize || 3;
+      const bSize = (this.currentConfig.batchSize && this.currentConfig.batchSize >= 12) ? this.currentConfig.batchSize : 23;
       const dMin = this.currentConfig.minDispersionKm ?? 6.5;
+      const evPct = this.currentConfig.evFleetPct ?? (this.currentConfig.evShare ?? 0);
 
-      let url = `${API_BASE_URL}/tradeoff?property_size_sqft=${propSize}&petrol_cost_per_km=${fuelPerKm}&batch_size=${bSize}&min_dispersion_km=${dMin}`;
+      let url = `${API_BASE_URL}/tradeoff?property_size_sqft=${propSize}&petrol_cost_per_km=${fuelPerKm}&batch_size=${bSize}&min_dispersion_km=${dMin}&target_p=${pCount}&ev_fleet_pct=${evPct}`;
       if (budgetInInr) {
         url += `&budget_monthly=${budgetInInr}`;
       }
@@ -178,11 +181,13 @@ class GridpointApiService {
       if (res.ok) {
         const data = await res.json();
         if (data.points && Array.isArray(data.points)) {
-          return data.points.map((pt: { num_warehouses: number; total_annual: number; feasible: boolean }) => ({
-            count: pt.num_warehouses,
-            cost: Number((pt.total_annual / 100000).toFixed(1)),
-            isOptimal: pt.num_warehouses === pCount,
-          }));
+          return data.points
+            .filter((pt: { num_warehouses: number; total_annual: number; feasible?: boolean }) => pt.feasible !== false && pt.total_annual > 0)
+            .map((pt: { num_warehouses: number; total_annual: number; feasible?: boolean }) => ({
+              count: pt.num_warehouses,
+              cost: Number((pt.total_annual / 100000).toFixed(1)),
+              isOptimal: pt.num_warehouses === pCount,
+            }));
         }
       }
     } catch (err) {
@@ -224,28 +229,32 @@ class GridpointApiService {
     // Try FastAPI Backend
     try {
       const budgetInInr =
-        this.currentConfig.budgetMonthlyLakhs !== undefined
-          ? (this.currentConfig.budgetMonthlyLakhs > 0 ? this.currentConfig.budgetMonthlyLakhs * 100000 : null)
-          : (this.currentConfig.budgetMonthly && this.currentConfig.budgetMonthly > 0 ? this.currentConfig.budgetMonthly : null);
+        this.currentConfig.budgetMonthlyLakhs !== undefined && this.currentConfig.budgetMonthlyLakhs > 0
+          ? this.currentConfig.budgetMonthlyLakhs * 100000
+          : this.currentConfig.budgetMonthly && this.currentConfig.budgetMonthly > 0
+          ? this.currentConfig.budgetMonthly
+          : null;
 
       const fuelPerKm =
         this.currentConfig.petrolCostPerKm !== undefined
           ? this.currentConfig.petrolCostPerKm
           : Number((this.currentConfig.fuelPrice / 50.0).toFixed(2)) || 2.0;
 
+      const pCount = Math.max(1, Math.min(100, this.currentConfig.maxWarehouses || 3));
+      const minDisp = this.currentConfig.minDispersionKm ?? 6.5;
+
       const reqPayload = {
-        num_warehouses: Math.max(1, Math.min(100, this.currentConfig.maxWarehouses || 3)),
+        num_warehouses: pCount,
         budget_monthly: budgetInInr,
         property_size_sqft: this.currentConfig.propertySizeSqft || 2500.0,
         petrol_cost_per_km: fuelPerKm,
         batch_size: this.currentConfig.batchSize || 23,
-        min_dispersion_km: this.currentConfig.minDispersionKm ?? 6.5,
-        max_radius_km: this.currentConfig.maxDeliveryTime
-          ? Math.round(this.currentConfig.maxDeliveryTime * 0.7)
-          : null,
+        min_dispersion_km: minDisp,
+        max_radius_km: this.currentConfig.maxRadiusKm ?? null,
         use_capacity: this.currentConfig.useCapacity || false,
-        capacity_per_warehouse: this.currentConfig.capacityPerWarehouse || null,
-        ev_fleet_pct: this.currentConfig.evShare !== undefined ? this.currentConfig.evShare : (this.currentConfig.evFleetPct || 0.0),
+        capacity_per_warehouse: this.currentConfig.useCapacity ? (this.currentConfig.capacityPerWarehouse || null) : null,
+        ev_fleet_pct: this.currentConfig.evFleetPct !== undefined ? this.currentConfig.evFleetPct : (this.currentConfig.evShare ?? 0.0),
+        picking_time_min: 3.0,
         target_sla_minutes: this.currentConfig.targetSlaMinutes || 10.0,
       };
 
@@ -259,16 +268,61 @@ class GridpointApiService {
 
       if (res.ok) {
         const backendRes = await res.json();
+
+        this.notifyStatus({
+          online: true,
+          version: '2.0.0',
+          service: 'GRIDPOINT FastAPI Backend',
+          checkedAt: Date.now(),
+        });
+
         if (backendRes.status === 'ok' && backendRes.warehouses?.length > 0) {
           const transformed = await this.transformBackendResponse(backendRes);
           this.currentResult = transformed;
-          this.notifyStatus({
-            online: true,
-            version: '2.0.0',
-            service: 'GRIDPOINT FastAPI Backend',
-            checkedAt: Date.now(),
-          });
           return transformed;
+        }
+
+        // True 1:1 Backend Synchronization: Propagate backend infeasible status & message directly
+        if (backendRes.status === 'infeasible') {
+          const infeasibleResult: OptimizationResult = {
+            status: 'infeasible',
+            infeasibleReason: backendRes.reason,
+            infeasibleMessage: backendRes.message || 'No feasible solution found under the specified constraints.',
+            suggestedBudget: backendRes.suggested_budget,
+            summaryMessage: `✗ INFEASIBLE: ${backendRes.message || backendRes.reason || 'Constraint violation'}`,
+            warehouses: this.currentResult?.warehouses || [],
+            zones: this.currentResult?.zones || [],
+            assignments: this.currentResult?.assignments || [],
+            selectedWarehouseIds: this.currentResult?.selectedWarehouseIds || [],
+            kpi: this.currentResult?.kpi || {
+              optimalWarehouses: 0,
+              totalCostLakhs: 0,
+              avgDeliveryTimeMin: 0,
+              fuelConsumedLiters: 0,
+              co2EmissionsTons: 0,
+              slaCompliancePercent: 0,
+              baseline: {
+                totalCostLakhs: 0,
+                avgDeliveryTimeMin: 0,
+                fuelConsumedLiters: 0,
+                co2EmissionsTons: 0,
+                slaCompliancePercent: 0,
+              },
+            },
+            analytics: this.currentResult?.analytics || {
+              costVsWarehouses: [],
+              warehouseUtilization: [],
+              costBreakdown: [],
+              demandDistribution: [],
+              deliveryTimeDistribution: [],
+              co2ByWarehouse: [],
+            },
+            executionTimeMs: backendRes.meta?.solve_time_ms || 0,
+            nodeAssignments: this.currentResult?.nodeAssignments,
+            nodeSpokes: this.currentResult?.nodeSpokes,
+          };
+          this.currentResult = infeasibleResult;
+          return infeasibleResult;
         }
       }
     } catch (err) {
@@ -304,6 +358,7 @@ class GridpointApiService {
       monthly_rent: number;
       annual_rent: number;
       assigned_orders: number;
+      capacity?: number;
       utilization_pct: number;
       color: string;
       avg_delivery_time_min?: number;
@@ -344,28 +399,34 @@ class GridpointApiService {
       min_inter_hub_separation_km?: number;
     };
   }): Promise<OptimizationResult> {
-    const selectedWarehouses: Warehouse[] = backendRes.warehouses.map((w) => ({
-      id: w.id,
-      name: w.name,
-      location: `${w.locality}, ${w.zone} Zone`,
-      lat: w.lat,
-      lng: w.lng,
-      capacity: Math.round(w.assigned_orders * 1.35) || 50000,
-      demandServed: Math.round(w.assigned_orders),
-      utilization: w.utilization_pct,
-      operatingCost: Math.round(w.monthly_rent / 30),
-      status: (w.utilization_pct >= 90 ? 'Near Capacity' : 'Optimal') as Warehouse['status'],
-      assignedZones: [],
-      isCandidate: true,
-      isSelected: true,
-      avgDeliveryTime: w.avg_delivery_time_min ?? (backendRes.costs.avg_delivery_time_min ?? 9.5),
-      costPerSqFt: w.price_per_sqft,
-      setupCostLakhs: Number(((w.monthly_rent * 1.5) / 100000).toFixed(1)),
-      color: w.color,
-      slaCompliancePct: w.sla_compliance_pct,
-      employeesRequired: w.employees_required,
-      monthlyRent: w.monthly_rent,
-    }));
+    const selectedWarehouses: Warehouse[] = backendRes.warehouses.map((w) => {
+      const assigned = Math.round(w.assigned_orders);
+      const cap = Math.round(w.capacity || (w.utilization_pct > 0 ? (assigned / (w.utilization_pct / 100)) : assigned * 1.35));
+      const actualUtil = cap > 0 ? Math.min(100, Math.round((assigned / cap) * 1000) / 10) : w.utilization_pct;
+
+      return {
+        id: w.id,
+        name: w.name,
+        location: `${w.locality}, ${w.zone} Zone`,
+        lat: w.lat,
+        lng: w.lng,
+        capacity: cap,
+        demandServed: assigned,
+        utilization: actualUtil,
+        operatingCost: Math.round(w.monthly_rent / 30),
+        status: (actualUtil >= 90 ? 'Near Capacity' : 'Optimal') as Warehouse['status'],
+        assignedZones: [],
+        isCandidate: true,
+        isSelected: true,
+        avgDeliveryTime: w.avg_delivery_time_min ?? (backendRes.costs.avg_delivery_time_min ?? 9.5),
+        costPerSqFt: w.price_per_sqft,
+        setupCostLakhs: Number(((w.monthly_rent * 1.5) / 100000).toFixed(1)),
+        color: w.color,
+        slaCompliancePct: w.sla_compliance_pct,
+        employeesRequired: w.employees_required,
+        monthlyRent: w.monthly_rent,
+      };
+    });
 
     const selectedWarehouseIds = selectedWarehouses.map((w) => w.id);
 
@@ -387,7 +448,7 @@ class GridpointApiService {
     const updatedZones: DemandZone[] = this.demandZones.map((z) => {
       const assignment = assignmentsMap.get(z.id) || backendRes.assignments[0];
       const dist = assignment ? assignment.distance_km : 12.0;
-      const deliveryTime = Math.round(dist * 1.75 + 8);
+      const deliveryTime = calculateDeliveryTimeMinutes(dist, z.trafficIndex);
       const targetWhId = assignment ? assignment.warehouse_id : selectedWarehouseIds[0];
 
       return {
@@ -463,19 +524,15 @@ class GridpointApiService {
     }));
 
     // Cost Breakdown
-    const totalAnnLakhs = backendRes.costs.total_annual / 100000;
+    const totalAnnLakhs = Math.max(0.1, backendRes.costs.total_annual / 100000);
     const rentShare = Number((backendRes.costs.annual_rent / 100000).toFixed(1));
     const fuelShare = Number((backendRes.costs.annual_fuel / 100000).toFixed(1));
-    const laborShare = Number((totalAnnLakhs * 0.18).toFixed(1));
-    const fleetShare = Number((totalAnnLakhs * 0.12).toFixed(1));
-    const itShare = Math.max(0.1, Number((totalAnnLakhs - (rentShare + fuelShare + laborShare + fleetShare)).toFixed(1)));
+    const rentPct = Math.round((rentShare / totalAnnLakhs) * 100);
+    const fuelPct = Math.max(0, 100 - rentPct);
 
     const costBreakdown = [
-      { name: 'Warehouse Lease', value: rentShare, color: '#78350F', percentage: Math.round((rentShare / totalAnnLakhs) * 100) },
-      { name: 'Transportation & Fuel', value: fuelShare, color: '#DC2626', percentage: Math.round((fuelShare / totalAnnLakhs) * 100) },
-      { name: 'Labour & Staging', value: laborShare, color: '#15803D', percentage: Math.round((laborShare / totalAnnLakhs) * 100) },
-      { name: 'Fleet Depreciation', value: fleetShare, color: '#D97706', percentage: Math.round((fleetShare / totalAnnLakhs) * 100) },
-      { name: 'Maintenance & IT', value: itShare, color: '#6B7280', percentage: Math.round((itShare / totalAnnLakhs) * 100) },
+      { name: 'Warehouse Lease', value: rentShare, color: '#78350F', percentage: rentPct },
+      { name: 'Transportation & Fuel', value: fuelShare, color: '#DC2626', percentage: fuelPct },
     ];
 
     // Delivery time distribution
@@ -514,16 +571,16 @@ class GridpointApiService {
     });
 
     const totalCostLakhs = Number((backendRes.costs.total_annual / 100000).toFixed(1));
-    const annualFuel = Math.round(backendRes.costs.annual_fuel);
-    const co2Tons = Number(((backendRes.costs.daily_fuel * 365 * 2.68) / 1000).toFixed(1));
+    const annualFuelLiters = Math.round((backendRes.costs.daily_fuel_liters ?? 0) * 365);
+    const co2Tons = backendRes.costs.annual_co2_tons ?? Number(((annualFuelLiters * 2.31) / 1000).toFixed(1));
 
     const kpi: KPIMetrics = {
       optimalWarehouses: selectedWarehouses.length,
       totalCostLakhs,
       avgDeliveryTimeMin: avgDeliveryTime,
-      fuelConsumedLiters: annualFuel,
-      co2EmissionsTons: backendRes.costs.annual_co2_tons ?? co2Tons,
-      slaCompliancePercent: backendRes.costs.sla_compliance_pct ?? 95.2,
+      fuelConsumedLiters: annualFuelLiters,
+      co2EmissionsTons: co2Tons,
+      slaCompliancePercent: backendRes.costs.sla_compliance_pct ?? 0,
       dailyPetrolCost: backendRes.costs.daily_petrol_cost,
       dailyEvCost: backendRes.costs.daily_ev_cost,
       dailyFuelSavings: backendRes.costs.daily_fuel_savings,
@@ -533,14 +590,55 @@ class GridpointApiService {
       evFleetPct: backendRes.costs.ev_fleet_pct,
       baseline: {
         totalCostLakhs: Number((totalCostLakhs * 1.24).toFixed(1)),
-        avgDeliveryTimeMin: Math.round(avgDeliveryTime * 1.38),
-        fuelConsumedLiters: Math.round(annualFuel * 1.29),
-        co2EmissionsTons: Number(((backendRes.costs.annual_co2_tons ?? co2Tons) * 1.3).toFixed(1)),
-        slaCompliancePercent: Math.max(5.0, Number(((backendRes.costs.sla_compliance_pct ?? 95.2) * 0.75).toFixed(1))),
+        avgDeliveryTimeMin: Number((avgDeliveryTime * 1.35).toFixed(1)),
+        fuelConsumedLiters: Math.round(annualFuelLiters * 1.29),
+        co2EmissionsTons: Number((co2Tons * 1.3).toFixed(1)),
+        slaCompliancePercent: Math.max(1.0, Number(((backendRes.costs.sla_compliance_pct ?? 10) * 0.65).toFixed(1))),
       },
     };
 
+    // Build nodeAssignments lookup and nodeSpokes for all 800 demand points (1:1 with index.html)
+    const nodeAssignments: Record<string, { warehouseId: string; warehouseName: string; color: string; distance: number }> = {};
+    const nodeSpokes: Array<{ origin: [number, number]; destination: [number, number]; color: string }> = [];
+
+    const whCoordMap = new Map<string, { lat: number; lng: number; color: string; name: string }>();
+    selectedWarehouses.forEach((w) => {
+      whCoordMap.set(w.id, { lat: w.lat, lng: w.lng, color: w.color || '#15803D', name: w.name });
+    });
+
+    const pointCoordMap = new Map<string, [number, number]>();
+    BENGALURU_800_POINTS.forEach((pt) => {
+      pointCoordMap.set(pt.id, [pt.lat, pt.lng]);
+    });
+    if (this.cityDataCache?.points) {
+      this.cityDataCache.points.forEach((p) => {
+        pointCoordMap.set(p.point_id, [p.latitude, p.longitude]);
+      });
+    }
+
+    backendRes.assignments.forEach((a) => {
+      const wh = whCoordMap.get(a.warehouse_id);
+      if (wh) {
+        nodeAssignments[a.demand_id] = {
+          warehouseId: a.warehouse_id,
+          warehouseName: wh.name,
+          color: wh.color,
+          distance: a.distance_km,
+        };
+        const ptCoord = pointCoordMap.get(a.demand_id);
+        if (ptCoord) {
+          nodeSpokes.push({
+            origin: ptCoord,
+            destination: [wh.lat, wh.lng],
+            color: wh.color,
+          });
+        }
+      }
+    });
+
     const solveTime = backendRes.meta?.solve_time_ms || 450;
+    const rentLakhs = (backendRes.costs.monthly_rent / 100000).toFixed(1);
+    const summaryMessage = `${selectedWarehouses.length} warehouses selected • ${avgDeliveryTime.toFixed(1)} min avg delivery • ₹${rentLakhs} L/mo rent • ${(backendRes.costs.sla_compliance_pct ?? 95.2).toFixed(1)}% 10-min SLA`;
 
     return {
       warehouses: allWarehouses,
@@ -556,8 +654,12 @@ class GridpointApiService {
         deliveryTimeDistribution,
         co2ByWarehouse,
       },
-      summaryMessage: `${selectedWarehouses.length} warehouses selected • ₹${totalCostLakhs} L/yr operational cost • ${solveTime}ms solver time (FastAPI backend)`,
+      summaryMessage,
       executionTimeMs: solveTime,
+      status: 'ok',
+      nodeAssignments,
+      nodeSpokes,
+      costs: backendRes.costs,
     };
   }
 
