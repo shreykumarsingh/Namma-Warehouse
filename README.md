@@ -7,7 +7,7 @@
 ## 📌 Table of Contents
 
 1. [Background & Problem Statement](#-background--problem-statement)
-2. [Compliance Matrix (Core Requirements & Bonus Features)](#-compliance-matrix)
+2. [Core Platform Features & Capabilities](#-core-platform-features--capabilities)
 3. [Bengaluru Geospatial Context](#-bengaluru-geospatial-context)
 4. [Mathematical Formulations & Equations](#-mathematical-formulations--equations)
    - [Objective Function (DCFLP)](#1-discrete-capacitated-facility-location-objective-function)
@@ -38,36 +38,49 @@ Build a **Warehouse Location Optimization Platform** that determines where wareh
 
 ---
 
-## ✅ Compliance Matrix
+## 🚀 Core Platform Features & Capabilities
 
-This project fulfills **all 9 Core Requirements** and **all 8 Bonus Features** specified in the hackathon brief (**17 / 17 Fulfilled**):
+GRIDPOINT is an end-to-end spatial logistics decision platform that transforms raw urban demand data into an optimized, cost-effective warehouse and delivery network:
 
-### Core Requirements (9 / 9 ✅)
+### 1. Interactive Geospatial Visualization & Spatial Ingestion
+- **800 Discrete BBMP Demand Nodes**: Visualizes customer orders across the entire Greater Bengaluru metropolitan area with interactive Leaflet map layers, dynamic heatmaps, and coordinate tooltips.
+- **Data Ingestion & Filtering**: Search, inspect, and filter candidate wards by zone (North, South, East, West, Central) or ingest custom demand zones on demand via [`DataPage.tsx`](frontend/src/pages/DataPage.tsx).
 
-| # | Core Requirement | Status | Where Implemented & Verified |
-|:--|:---|:---:|:---|
-| **1** | **Upload or enter neighborhood data** (location & daily orders) | ✅ **Fulfilled** | Pre-loaded with 800 BBMP coordinate nodes + interactive search/filtering in [`DataPage.tsx`](frontend/src/pages/DataPage.tsx) + `setCustomDemandZones()` in [`api.ts`](frontend/src/services/api.ts#L713). |
-| **2** | **Visualize all neighborhood locations on a map** | ✅ **Fulfilled** | Interactive Leaflet canvas in [`LogisticsMap.tsx`](frontend/src/components/LogisticsMap.tsx) showing all 800 demand clusters, intensity heatmaps, and tooltips. |
-| **3** | **Allow user to select number of warehouses** | ✅ **Fulfilled** | Dynamic slider ($1 \le p \le 100$) in [`OptimizationPanel.tsx`](frontend/src/components/OptimizationPanel.tsx#L106-L127) with auto-dispersion recommendation. |
-| **4** | **Run optimization algorithm** | ✅ **Fulfilled** | Discrete Greedy Seeding + Spatial Dispersion + 1-Opt Local Swap in [`backend/solver.py`](backend/solver.py#L308-L555) (<150 ms solve time). |
-| **5** | **Assign each neighborhood to nearest/optimal warehouse** | ✅ **Fulfilled** | Anti-Deadlock Regret-First Demand Allocation in [`backend/solver.py`](backend/solver.py#L182-L211) preventing stranded boundary nodes. |
-| **6** | **Calculate total delivery distance and cost** | ✅ **Fulfilled** | Full breakdown of daily fleet kilometers, petrol/EV fuel expenditure, monthly facility lease, and driver payroll in solver output. |
-| **7** | **Display optimized warehouse locations and assignments** | ✅ **Fulfilled** | Golden-ratio colored warehouse pins, interactive spoke delivery lines, and [`WarehouseResultsGrid.tsx`](frontend/src/components/WarehouseResultsGrid.tsx). |
-| **8** | **Compare original arrangement with optimized arrangement** | ✅ **Fulfilled** | Baseline comparison benchmarks in [`solver.ts`](frontend/src/utils/solver.ts#L336-L355) (`↓ 18% vs baseline` KPI badge) + before/after delta counters in [`ScenariosPage.tsx`](frontend/src/pages/ScenariosPage.tsx). |
-| **9** | **Consider warehouse capacity & maximum service radius** | ✅ **Fulfilled** | Configurable `capacity_per_warehouse` and `max_radius_km` parameters with automated infeasibility checking and feedback in [`solver.py`](backend/solver.py#L523-L537). |
+### 2. Scalable Discrete Facility Location Optimizer
+- **1 to 100 Hub Scaling**: Interactive parameter controls allowing planners to place anywhere from 1 to 100 fulfillment centers or micro-hubs (dark stores).
+- **Sub-150ms Optimization Engine**: Powered by vectorized NumPy matrix lookahead and 1-Opt local swap search in [`backend/solver.py`](backend/solver.py) to minimize total operational expenditures (facility leases + transit fuel).
+- **Adaptive Spatial Dispersion ($D_{\min}$)**: Enforces dynamic inter-hub exclusion zones so warehouses never clump together in high-density pockets (e.g., placing multiple dark stores in the same corner of Koramangala).
 
-### Bonus Features (8 / 8 ✅)
+### 3. Anti-Deadlock Regret-First Demand Allocation
+- **Smart Assignment**: Assigns each neighborhood to its optimal hub based on minimum road circuity and traffic friction.
+- **Regret-First Priority**: When capacity limits are enforced, customers with the highest penalty between their nearest and second-nearest warehouse are served first, preventing capacity starvation and deadlocks for boundary nodes.
 
-| # | Bonus Requirement | Status | Where Implemented & Verified |
-|:--|:---|:---:|:---|
-| **1** | **Support multiple warehouses** | ✅ **Fulfilled** | Supports $1 \le p \le 100$ warehouses with adaptive spatial dispersion scaling ($D_{\text{effective}}$). |
-| **2** | **Introduce limited warehouse capacity** | ✅ **Fulfilled** | Capacitated Facility Location with automatic peak-catchment sizing and Regret-First assignment. |
-| **3** | **Consider maximum delivery radius** | ✅ **Fulfilled** | Strict coverage enforcement with clear infeasibility diagnostics and suggestions. |
-| **4** | **Account for different vehicle types** | ✅ **Fulfilled** | Two-wheeler ICE (petrol) vs. Electric Vehicle (EV) fleet modeling with distinct fuel, range, and operational profiles. |
-| **5** | **Include fuel costs** | ✅ **Fulfilled** | Real-world fuel modeling: ₹2.00/km (petrol) vs. ₹0.35/km (EV charging) with annual expense projections. |
-| **6** | **Incorporate traffic-dependent delivery times** | ✅ **Fulfilled** | 3-phase kinematic speed model factoring empirical traffic congestion index $\tau_i$ across Bengaluru corridors. |
-| **7** | **Model changes in customer demand** | ✅ **Fulfilled** | [`ScenariosPage.tsx`](frontend/src/pages/ScenariosPage.tsx) simulates Festive Demand Shocks (+40%), Weather/Monsoon Inundation, and Peak ORR Bottlenecks. |
-| **8** | **Explore infrastructure vs. delivery cost trade-off** | ✅ **Fulfilled** | Dedicated `/api/tradeoff` endpoint and interactive U-Curve chart on the dashboard and analytics pages. |
+### 4. Realistic Capacity & Service Radius Constraints
+- **Warehouse Capacity Limits**: Automatically sizes warehouse throughput with a 35% buffer above average demand loads to handle peak catchment areas.
+- **Max Service Radius Enforcement**: Guarantees delivery commitments by enforcing a hard service radius cutoff, with instant diagnostics and guidance if remote nodes exceed coverage.
+
+### 5. 3-Phase Kinematic 10-Minute SLA Compliance Engine
+- **End-to-End Fulfillment Modeling**: Combines 3-minute dark store retrieval and packaging, traffic-impeded two-wheeler road transit, and high-density doorstep handover.
+- **Empirical Traffic Dynamics**: Dynamic travel speed calculated per zone based on live congestion indices across Silk Board, Tin Factory, and Outer Ring Road corridors.
+
+### 6. Workforce & Milk-Run Route Economics
+- **Driver Workforce Modeling**: Models the active delivery fleet required (52,050 active drivers @ ₹1,000/day baseline wages) based on realistic shift throughput (mean 23 deliveries/driver/day).
+- **Consolidated Milk-Run Routing**: Evaluates multi-drop delivery batches to calculate realistic daily fleet kilometers, fuel burn, and wage expenditures.
+
+### 7. EV Fleet Electrification & ESG Carbon Accounting
+- **Green Fleet Simulator**: Live toggle to evaluate fleet transition ratios from 0% (100% petrol) to 100% EV.
+- **Operational Savings & Carbon Reduction**: Evaluates ₹2.00/km (petrol) vs. ₹0.35/km (EV charging), demonstrating over ₹44 Crore/year in fuel savings and eliminating 17,700+ tons of CO₂ annually.
+
+### 8. Real-Time Baseline Comparison & Scenario Stress Testing
+- **Baseline vs. Optimized Benchmarking**: Live comparison against unoptimized single-hub or ad-hoc logistics networks with automated percentage savings badges (`↓ 18% vs baseline`).
+- **Interactive Stress Testing**: [`ScenariosPage.tsx`](frontend/src/pages/ScenariosPage.tsx) simulates real-world supply chain shocks:
+  - **Festive Demand Surge (+40% Orders)**: Tests capacity limits during Diwali / Big Billion Days.
+  - **Peak ORR Congestion (+30% Traffic Delay)**: Stress tests SLA compliance during peak rush hours.
+  - **Bengaluru Monsoon Inundation (+50% Fuel Burn)**: Simulates waterlogging and rerouting overhead.
+
+### 9. Infrastructure vs. Delivery Cost Trade-Off (U-Curve)
+- **Economic Equilibrium**: Explores the trade-off between fixed real estate commercial leases and variable fleet delivery fuel costs.
+- **Optimal Hub Discovery**: Automatically computes and visualizes the global convex cost minimum ($p^*$) via the `/api/tradeoff` endpoint.
 
 ---
 
