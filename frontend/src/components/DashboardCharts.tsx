@@ -36,6 +36,9 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({
 
   if (!hasTradeoffData && !hasUtilizationData) return null;
 
+  const optimalItem = costVsWarehouses?.find((p) => p.isOptimal) || (costVsWarehouses && costVsWarehouses.length > 0 ? costVsWarehouses.reduce((min, p) => p.cost < min.cost ? p : min, costVsWarehouses[0]) : null);
+  const optimalCount = optimalItem ? optimalItem.count : selectedCount;
+
   return (
     <section className="space-y-4">
       <div>
@@ -61,7 +64,7 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({
                 </p>
               </div>
               <span className="text-[11px] font-medium bg-violet-50 text-violet-700 px-2 py-0.5 rounded border border-violet-200">
-                Optimal: {selectedCount}
+                Optimal: {optimalCount} {selectedCount === optimalCount ? '(Selected)' : `(Selected: ${selectedCount})`}
               </span>
             </div>
 

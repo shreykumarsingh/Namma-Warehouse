@@ -14,6 +14,10 @@ class OptimizeRequest(BaseModel):
     ev_fleet_pct: float = Field(default=0.0, ge=0.0, le=100.0, description="Percentage of delivery fleet transitioned to Electric 2-Wheelers (0 to 100%)")
     picking_time_min: float = Field(default=3.0, ge=0.0, le=15.0, description="Dark store picking and packing time in minutes (default: 3.0)")
     target_sla_minutes: float = Field(default=10.0, ge=5.0, le=60.0, description="Quick-Commerce SLA target in minutes (default: 10.0)")
+    demand_multiplier: float = Field(default=1.0, ge=0.1, le=10.0, description="Demand scaling factor for stress scenarios (default: 1.0)")
+    traffic_multiplier: float = Field(default=1.0, ge=0.1, le=5.0, description="Traffic congestion multiplier (default: 1.0)")
+    disabled_warehouse_ids: List[str] = Field(default=[], description="List of warehouse candidate IDs disabled in outage scenarios")
+    custom_points: Optional[List[Dict[str, Any]]] = Field(default=None, description="Optional uploaded custom neighborhood points")
 
 class WarehouseDetail(BaseModel):
     id: str
@@ -52,6 +56,7 @@ class CostBreakdown(BaseModel):
     total_employees: int
     daily_driver_wages: float
     monthly_driver_wages: float
+    annual_driver_wages: float = 0.0
     monthly_rent: float
     annual_rent: float
     total_annual: float
@@ -71,6 +76,17 @@ class CostBreakdown(BaseModel):
     annual_fuel_savings: float = 0.0
     annual_co2_saved_tons: float = 0.0
 
+class BaselineMetrics(BaseModel):
+    total_cost_lakhs: float
+    avg_delivery_time_min: float
+    fuel_consumed_liters: float
+    co2_emissions_tons: float
+    sla_compliance_pct: float
+    annual_fuel_cost: float
+    monthly_rent: float
+    annual_driver_wages: Optional[float] = None
+    total_annual: float
+
 class OptimizeResponse(BaseModel):
     status: str
     reason: Optional[str] = None
@@ -79,6 +95,7 @@ class OptimizeResponse(BaseModel):
     warehouses: List[WarehouseDetail] = []
     assignments: List[Assignment] = []
     costs: Optional[CostBreakdown] = None
+    baseline: Optional[BaselineMetrics] = None
     meta: Dict[str, Any] = {}
 
 class CityDataPoint(BaseModel):
@@ -107,9 +124,22 @@ class TradeoffPoint(BaseModel):
     monthly_rent: float
     annual_rent: float
     annual_fuel: float
+    annual_wages: Optional[float] = None
     total_annual: float
     feasible: bool
 
 class TradeoffResponse(BaseModel):
     points: List[TradeoffPoint]
     recommended_p: int
+
+class UploadPointsRequest(BaseModel):
+    csv_text: Optional[str] = Field(default=None, description="Raw CSV string content")
+    points: Optional[List[Dict[str, Any]]] = Field(default=None, description="Pre-parsed list of point dicts")
+
+class UploadPointsResponse(BaseModel):
+    status: str
+    message: Optional[str] = None
+    total_points: int = 0
+    total_daily_orders: float = 0.0
+    points: List[CityDataPoint] = []
+

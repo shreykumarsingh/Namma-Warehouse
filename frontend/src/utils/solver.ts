@@ -128,7 +128,10 @@ export function runOptimization(
 
     const avgTime = totalOrders > 0 ? totalTimeWeighted / totalOrders : 30;
     const sla = totalOrders > 0 ? (slaHits / totalOrders) * 100 : 90;
-    const totalCostINR = totalFixedCost + totalTransportCost;
+    const batchSize = config.batchSize || 23;
+    const driversNeeded = Math.ceil(totalOrders / batchSize);
+    const dailyWages = driversNeeded * 1000;
+    const totalCostINR = totalFixedCost + totalTransportCost + dailyWages;
     const totalCostLakhs = totalCostINR / 100000;
 
     // Multi-criteria scoring
@@ -282,18 +285,15 @@ export function runOptimization(
     }));
 
   // Cost Breakdown Pie Data
-  const transportShare = Math.round(best.totalCost * 0.38 * 10) / 10;
-  const leaseShare = Math.round(best.totalCost * 0.32 * 10) / 10;
-  const laborShare = Math.round(best.totalCost * 0.16 * 10) / 10;
-  const fuelShare = Math.round(best.totalCost * 0.11 * 10) / 10;
-  const otherShare = Math.round((best.totalCost - (transportShare + leaseShare + laborShare + fuelShare)) * 10) / 10;
+  const totalCost = best.totalCost;
+  const transportFuelShare = Math.round(totalCost * 0.45 * 10) / 10;
+  const leaseShare = Math.round(totalCost * 0.30 * 10) / 10;
+  const wagesShare = Math.round((totalCost - transportFuelShare - leaseShare) * 10) / 10;
 
   const costBreakdown = [
-    { name: 'Transportation', value: transportShare, color: '#D97706', percentage: 38 },
-    { name: 'Warehouse Lease', value: leaseShare, color: '#78350F', percentage: 32 },
-    { name: 'Labour & Staging', value: laborShare, color: '#15803D', percentage: 16 },
-    { name: 'Fuel', value: fuelShare, color: '#DC2626', percentage: 11 },
-    { name: 'Maintenance & IT', value: Math.max(0.1, otherShare), color: '#6B7280', percentage: 3 },
+    { name: 'Warehouse Lease', value: leaseShare, color: '#78350F', percentage: 30 },
+    { name: 'Transportation & Fuel', value: transportFuelShare, color: '#DC2626', percentage: 45 },
+    { name: 'Driver Wages', value: Math.max(0.1, wagesShare), color: '#2563EB', percentage: 25 },
   ];
 
   // Delivery Time Distribution Histogram
@@ -328,17 +328,18 @@ export function runOptimization(
         .reduce((sum, r) => sum + r.fuelLiters, 0);
       return {
         name: w.id + ' - ' + w.name.split(' ')[0],
-        co2: Number(((wFuel * 2.68) / 1000).toFixed(2)),
+        co2: Number(((wFuel * 2.31) / 1000).toFixed(2)),
         fuel: Math.round(wFuel),
       };
     });
 
-  // Baseline comparison (unoptimized network with arbitrary single central hub or suboptimal 2 hubs)
-  const baselineCost = Number((best.totalCost * 1.22).toFixed(1));
-  const baselineTime = Number((best.avgTime * 1.39).toFixed(1));
-  const baselineFuel = Math.round(best.totalFuel * 1.28);
-  const baselineCO2 = Number((best.totalCO2 * 1.32).toFixed(1));
-  const baselineSLA = Number(Math.max(1.0, Math.min(best.sla, best.sla * 0.7)).toFixed(1));
+  // Baseline comparison (unoptimized network with arbitrary single central hub)
+  const baselineSet = evaluateSet([availableCandidates[0]?.id || candidateWarehouses[0].id]);
+  const baselineCost = Number(baselineSet.totalCost.toFixed(1));
+  const baselineTime = Number(baselineSet.avgTime.toFixed(1));
+  const baselineFuel = Math.round(baselineSet.totalFuel);
+  const baselineCO2 = Number(baselineSet.totalCO2.toFixed(1));
+  const baselineSLA = Number(baselineSet.sla.toFixed(1));
 
   const kpi: KPIMetrics = {
     optimalWarehouses: selectedWarehouseIds.length,

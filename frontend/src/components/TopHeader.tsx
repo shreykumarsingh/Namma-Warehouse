@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   Info
 } from 'lucide-react';
+import { api, BackendStatus } from '../services/api';
 
 export interface FeatureItem {
   id: string;
@@ -97,7 +98,16 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   const [showHonk, setShowHonk] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [backendStatus, setBackendStatus] = useState<BackendStatus>(api.getBackendStatus());
   const ddTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    const unsub = api.onStatusChange((status) => {
+      setBackendStatus(status);
+    });
+    api.checkBackendHealth();
+    return unsub;
+  }, []);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
   const currentFeature = FEATURES.find((f) => f.id === activeTab) || FEATURES[0];
@@ -225,6 +235,23 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
               <span className="blr-pill">
                 <span className="blr-dot" />
                 Bengaluru Central
+              </span>
+
+              {/* Engine Status Badge */}
+              <span
+                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+                  backendStatus.online
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                    : 'bg-amber-50 text-amber-800 border-amber-200'
+                }`}
+                title={backendStatus.online ? 'FastAPI discrete spatial solver connected' : 'Local browser heuristic solver'}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    backendStatus.online ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+                  }`}
+                />
+                {backendStatus.online ? 'GRIDPOINT Python Engine' : 'Local Fallback'}
               </span>
             </div>
 

@@ -20,7 +20,7 @@ import {
 } from '../data/cityData';
 import { BENGALURU_800_POINTS } from '../data/rawBengaluruPoints';
 import { runOptimization } from '../utils/solver';
-import { calculateDeliveryTimeMinutes } from '../utils/geo';
+import { calculateDeliveryTimeMinutes, calculateDistanceKm } from '../utils/geo';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) || '/api';
 
@@ -60,6 +60,7 @@ class GridpointApiService {
   private backendStatus: BackendStatus = { online: false, checkedAt: 0 };
   private cityDataCache: CityApiResponse | null = null;
   private statusListeners: Array<(status: BackendStatus) => void> = [];
+  private customPoints: Array<Record<string, unknown>> | null = null;
 
   constructor() {
     // Initial baseline client result
@@ -163,16 +164,18 @@ class GridpointApiService {
           : (this.currentConfig.budgetMonthly && this.currentConfig.budgetMonthly > 0 ? this.currentConfig.budgetMonthly : null);
 
       const fuelPerKm =
-        this.currentConfig.petrolCostPerKm !== undefined
+        this.currentConfig.petrolCostPerKm !== undefined && !this.currentConfig.fuelPrice
           ? this.currentConfig.petrolCostPerKm
-          : Number((this.currentConfig.fuelPrice / 50.0).toFixed(2)) || 2.0;
+          : Number(((this.currentConfig.fuelPrice || 96.5) / 48.25).toFixed(2)) || 2.0;
 
       const propSize = this.currentConfig.propertySizeSqft || 2500.0;
-      const bSize = (this.currentConfig.batchSize && this.currentConfig.batchSize >= 12) ? this.currentConfig.batchSize : 23;
+      const bSize = (this.currentConfig.batchSize && this.currentConfig.batchSize >= 1) ? this.currentConfig.batchSize : 23;
       const dMin = this.currentConfig.minDispersionKm ?? 6.5;
       const evPct = this.currentConfig.evFleetPct ?? (this.currentConfig.evShare ?? 0);
+      const demandMult = this.currentConfig.demandMultiplier ?? 1.0;
+      const trafficMult = this.currentConfig.trafficMultiplier ?? 1.0;
 
-      let url = `${API_BASE_URL}/tradeoff?property_size_sqft=${propSize}&petrol_cost_per_km=${fuelPerKm}&batch_size=${bSize}&min_dispersion_km=${dMin}&target_p=${pCount}&ev_fleet_pct=${evPct}`;
+      let url = `${API_BASE_URL}/tradeoff?property_size_sqft=${propSize}&petrol_cost_per_km=${fuelPerKm}&batch_size=${bSize}&min_dispersion_km=${dMin}&target_p=${pCount}&ev_fleet_pct=${evPct}&demand_multiplier=${demandMult}&traffic_multiplier=${trafficMult}`;
       if (budgetInInr) {
         url += `&budget_monthly=${budgetInInr}`;
       }
@@ -181,12 +184,13 @@ class GridpointApiService {
       if (res.ok) {
         const data = await res.json();
         if (data.points && Array.isArray(data.points)) {
+          const recP = data.recommended_p || pCount;
           return data.points
             .filter((pt: { num_warehouses: number; total_annual: number; feasible?: boolean }) => pt.feasible !== false && pt.total_annual > 0)
             .map((pt: { num_warehouses: number; total_annual: number; feasible?: boolean }) => ({
               count: pt.num_warehouses,
               cost: Number((pt.total_annual / 100000).toFixed(1)),
-              isOptimal: pt.num_warehouses === pCount,
+              isOptimal: pt.num_warehouses === recP,
             }));
         }
       }
@@ -236,9 +240,9 @@ class GridpointApiService {
           : null;
 
       const fuelPerKm =
-        this.currentConfig.petrolCostPerKm !== undefined
+        this.currentConfig.petrolCostPerKm !== undefined && (config.petrolCostPerKm !== undefined || !config.fuelPrice)
           ? this.currentConfig.petrolCostPerKm
-          : Number((this.currentConfig.fuelPrice / 50.0).toFixed(2)) || 2.0;
+          : Number(((this.currentConfig.fuelPrice || 96.5) / 48.25).toFixed(2)) || 2.0;
 
       const pCount = Math.max(1, Math.min(100, this.currentConfig.maxWarehouses || 3));
       const minDisp = this.currentConfig.minDispersionKm ?? 6.5;
@@ -256,6 +260,10 @@ class GridpointApiService {
         ev_fleet_pct: this.currentConfig.evFleetPct !== undefined ? this.currentConfig.evFleetPct : (this.currentConfig.evShare ?? 0.0),
         picking_time_min: 3.0,
         target_sla_minutes: this.currentConfig.targetSlaMinutes || 10.0,
+        demand_multiplier: this.currentConfig.demandMultiplier ?? 1.0,
+        traffic_multiplier: this.currentConfig.trafficMultiplier ?? 1.0,
+        disabled_warehouse_ids: this.currentConfig.disabledWarehouseIds ?? [],
+        custom_points: this.customPoints ?? undefined,
       };
 
       const res = await fetch(`${API_BASE_URL}/optimize`, {
@@ -392,6 +400,19 @@ class GridpointApiService {
       annual_fuel_savings?: number;
       annual_co2_saved_tons?: number;
       total_employees?: number;
+      daily_driver_wages?: number;
+      monthly_driver_wages?: number;
+      annual_driver_wages?: number;
+    };
+    baseline?: {
+      total_annual: number;
+      avg_delivery_time_min: number;
+      fuel_consumed_liters: number;
+      co2_emissions_tons: number;
+      sla_compliance_pct: number;
+      annual_fuel_cost?: number;
+      monthly_rent?: number;
+      annual_driver_wages?: number;
     };
     meta?: {
       solve_time_ms?: number;
@@ -438,23 +459,23 @@ class GridpointApiService {
         .map((cw) => ({ ...cw, isSelected: false })),
     ];
 
-    // Compute delivery assignments
-    const assignmentsMap = new Map<string, typeof backendRes.assignments[0]>();
-    backendRes.assignments.forEach((a) => {
-      assignmentsMap.set(a.demand_id, a);
-    });
-
-    // Map demand zones
+    // Map demand zones to their closest selected warehouse by road network distance
     const updatedZones: DemandZone[] = this.demandZones.map((z) => {
-      const assignment = assignmentsMap.get(z.id) || backendRes.assignments[0];
-      const dist = assignment ? assignment.distance_km : 12.0;
-      const deliveryTime = calculateDeliveryTimeMinutes(dist, z.trafficIndex);
-      const targetWhId = assignment ? assignment.warehouse_id : selectedWarehouseIds[0];
+      let nearestWh = selectedWarehouses[0];
+      let minDist = Infinity;
+      for (const w of selectedWarehouses) {
+        const d = calculateDistanceKm(z.lat, z.lng, w.lat, w.lng) * 1.4;
+        if (d < minDist) {
+          minDist = d;
+          nearestWh = w;
+        }
+      }
+      const deliveryTime = calculateDeliveryTimeMinutes(minDist, z.trafficIndex);
 
       return {
         ...z,
-        assignedWarehouseId: targetWhId,
-        distanceKm: Number(dist.toFixed(1)),
+        assignedWarehouseId: nearestWh ? nearestWh.id : selectedWarehouseIds[0],
+        distanceKm: Number(minDist.toFixed(1)),
         deliveryTimeMinutes: deliveryTime,
       };
     });
@@ -480,7 +501,7 @@ class GridpointApiService {
           deliveryTimeMinutes: z.deliveryTimeMinutes,
           trafficFactor: z.trafficIndex,
           fuelLiters: fuel,
-          co2Kg: Number((fuel * 2.68).toFixed(2)),
+          co2Kg: Number((fuel * 2.31).toFixed(2)),
           color: wh.color || '#15803D',
         });
       }
@@ -523,16 +544,19 @@ class GridpointApiService {
       capacity: w.capacity,
     }));
 
-    // Cost Breakdown
+    // Cost Breakdown: Rent + Fuel + Driver Wages
     const totalAnnLakhs = Math.max(0.1, backendRes.costs.total_annual / 100000);
     const rentShare = Number((backendRes.costs.annual_rent / 100000).toFixed(1));
     const fuelShare = Number((backendRes.costs.annual_fuel / 100000).toFixed(1));
+    const wagesShare = Number(((backendRes.costs.annual_driver_wages ?? 0) / 100000).toFixed(1));
     const rentPct = Math.round((rentShare / totalAnnLakhs) * 100);
-    const fuelPct = Math.max(0, 100 - rentPct);
+    const fuelPct = Math.round((fuelShare / totalAnnLakhs) * 100);
+    const wagesPct = Math.max(0, 100 - rentPct - fuelPct);
 
     const costBreakdown = [
       { name: 'Warehouse Lease', value: rentShare, color: '#78350F', percentage: rentPct },
       { name: 'Transportation & Fuel', value: fuelShare, color: '#DC2626', percentage: fuelPct },
+      { name: 'Driver Wages', value: wagesShare, color: '#2563EB', percentage: wagesPct },
     ];
 
     // Delivery time distribution
@@ -565,7 +589,7 @@ class GridpointApiService {
         .reduce((sum, r) => sum + r.fuelLiters, 0);
       return {
         name: `${w.name.split(' ')[0]} Hub`,
-        co2: Number(((wFuel * 2.68) / 1000).toFixed(2)),
+        co2: Number(((wFuel * 2.31) / 1000).toFixed(2)),
         fuel: Math.round(wFuel),
       };
     });
@@ -587,8 +611,18 @@ class GridpointApiService {
       annualFuelSavings: backendRes.costs.annual_fuel_savings,
       annualCo2SavedTons: backendRes.costs.annual_co2_saved_tons,
       totalEmployees: backendRes.costs.total_employees,
+      dailyDriverWages: backendRes.costs.daily_driver_wages,
+      monthlyDriverWages: backendRes.costs.monthly_driver_wages,
+      annualDriverWages: backendRes.costs.annual_driver_wages,
       evFleetPct: backendRes.costs.ev_fleet_pct,
-      baseline: {
+      baseline: backendRes.baseline ? {
+        totalCostLakhs: Number((backendRes.baseline.total_annual / 100000).toFixed(1)),
+        avgDeliveryTimeMin: Number(backendRes.baseline.avg_delivery_time_min.toFixed(1)),
+        fuelConsumedLiters: Math.round(backendRes.baseline.fuel_consumed_liters),
+        co2EmissionsTons: Number(backendRes.baseline.co2_emissions_tons.toFixed(1)),
+        slaCompliancePercent: Number(backendRes.baseline.sla_compliance_pct.toFixed(1)),
+        annualDriverWages: backendRes.baseline.annual_driver_wages,
+      } : {
         totalCostLakhs: Number((totalCostLakhs * 1.24).toFixed(1)),
         avgDeliveryTimeMin: Number((avgDeliveryTime * 1.35).toFixed(1)),
         fuelConsumedLiters: Math.round(annualFuelLiters * 1.29),
@@ -684,8 +718,9 @@ class GridpointApiService {
       scenarioConfig.trafficMultiplier = 1 + scenario.percentageChange / 100;
       if (scenario.percentageChange >= 30) scenarioConfig.trafficLevel = 'high';
     } else if (scenario.type === 'fuel' && scenario.percentageChange) {
-      scenarioConfig.fuelPrice =
-        this.currentConfig.fuelPrice * (1 + scenario.percentageChange / 100);
+      const mult = 1 + scenario.percentageChange / 100;
+      scenarioConfig.fuelPrice = (this.currentConfig.fuelPrice || 96.5) * mult;
+      scenarioConfig.petrolCostPerKm = (this.currentConfig.petrolCostPerKm || 2.0) * mult;
     } else if (scenario.type === 'warehouse_failure' && scenario.disabledWarehouseId) {
       scenarioConfig.disabledWarehouseIds = [
         ...(this.currentConfig.disabledWarehouseIds || []),
@@ -707,6 +742,33 @@ class GridpointApiService {
       disabledWarehouseIds: [],
     };
     return this.optimizeNetwork(this.currentConfig);
+  }
+
+  /**
+   * Upload custom points CSV
+   */
+  async uploadPoints(csvText: string): Promise<any> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/upload-points`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ csv_text: csvText }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === 'ok' && data.points) {
+          (this as any).customPoints = data.points;
+        }
+        return data;
+      }
+    } catch (err) {
+      console.warn('[GRIDPOINT API] uploadPoints failed:', err);
+    }
+    return { status: 'error', message: 'Failed to upload custom dataset' };
+  }
+
+  public setCustomPoints(points: Array<Record<string, unknown>> | null) {
+    (this as any).customPoints = points;
   }
 
   /**

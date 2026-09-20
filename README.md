@@ -93,7 +93,7 @@ The platform is built around the unique geography and supply chain dynamics of t
   - Longitude: $77.45^\circ \text{E}$ to $77.78^\circ \text{E}$
   - Total Spatial Area: $\sim 750 \text{ sq.km}$
 - **800 Discrete Candidate Nodes**: Derived from BBMP administrative wards (East, West, South, North, and Central Zones), dissolving residential and commercial ward polygons into 800 discrete candidate nodes.
-- **Daily Demand Scale**: **1,197,150 customer orders/day** distributed across all 800 nodes (ranging from 800 to 2,800 orders/node/day).
+- **Daily Demand Scale**: **1,197,150 customer orders/day** distributed across all 800 nodes (ranging from 132 to 4,656 orders/node/day, mean ~1,496 orders/node/day).
 - **Key Congestion Corridors**: Outer Ring Road (Silk Board $\rightarrow$ Marathahalli $\rightarrow$ KR Puram), Tin Factory, Bellandur, and Hebbal Flyover calibrated with high traffic impedance ($\tau_i \ge 0.75$).
 - **Commercial Real Estate Rates**: Locality rental pricing benchmarks across Indiranagar, Koramangala, Peenya Industrial Area, Whitefield, HSR Layout, and Electronic City.
 
@@ -188,15 +188,15 @@ To evaluate customer fulfillment speed, GRIDPOINT models realistic urban two-whe
 
 ### 1. Urban Transit Speed Model
 Bangalore two-wheelers cannot travel at highway speeds due to signals, speed breakers, and arterial congestion. Speed is modeled dynamically as a function of each zone's empirical traffic density index ($0.0 \le \tau_i \le 1.0$):
-$$\text{Speed}_i (\text{km/h}) = \frac{30.0}{1.0 + 0.28 \cdot \tau_i}$$
-- Free-flowing peripheral roads: ~26–30 km/h.
-- Heavy arterial corridors (Silk Board, Tin Factory, Outer Ring Road): ~18–22 km/h.
+$$\text{Speed}_i (\text{km/h}) = \frac{24.0}{1.0 + 0.45 \cdot \tau_i}$$
+- Free-flowing peripheral roads: ~20–24 km/h.
+- Heavy arterial corridors (Silk Board, Tin Factory, Outer Ring Road): ~16–18 km/h.
 
 ### 2. End-to-End Delivery Time Equation
 $$\text{Delivery Time}_i (\text{minutes}) = \text{Picking Time} + \left( \frac{D_{ij}}{\text{Speed}_i} \times 60 \right)$$
 Where:
 - $\text{Picking Time} = 3.0 \text{ minutes}$ (dark store item retrieval, packing, QR scanning, and rider handoff).
-- $D_{ij}$ is the road transit distance in kilometers (derived using Haversine distance adjusted by a 1.28x urban street grid detour factor).
+- $D_{ij}$ is the road transit distance in kilometers (derived using Haversine distance adjusted by a 1.4x urban street grid circuity factor).
 
 ### 3. Network SLA Compliance Gauge
 An order is strictly compliant if $\text{Delivery Time}_i \le 10.0 \text{ minutes}$.
@@ -205,11 +205,11 @@ $$\text{SLA Compliance \%} = \frac{\sum_{i \in \text{Compliant}} d_i}{\sum_{i \i
 
 | Warehouse Count ($p$) | Avg Delivery Distance | Avg Delivery Time | 10-Min SLA Compliance | Verdict |
 | :---: | :---: | :---: | :---: | :--- |
-| **3 Hubs** | 10.8 km | **19.5 min** | **11.6%** | ❌ Physically impossible for 10-min delivery |
-| **10 Hubs** | 5.6 km | **13.4 min** | **34.2%** | ⚠️ Moderate coverage; frequent SLA breaches |
-| **25 Hubs** | 3.2 km | **9.2 min** | **61.7%** | 🟡 Viable quick-commerce core coverage |
-| **50 Hubs** | 2.1 km | **7.5 min** | **84.9%** | 🟢 Strong quick-commerce fulfillment |
-| **75 Hubs** | 1.6 km | **6.4 min** | **98.3%** | 🏆 Near-perfect 10-minute SLA guarantee |
+| **3 Hubs** | 10.3 km | **31.0 min** | **1.9%** | ❌ Physically impossible for 10-min delivery |
+| **10 Hubs** | 5.3 km | **18.9 min** | **4.8%** | ⚠️ Moderate coverage; frequent SLA breaches |
+| **25 Hubs** | 3.3 km | **14.3 min** | **12.8%** | 🟡 Viable quick-commerce core coverage |
+| **50 Hubs** | 2.2 km | **11.9 min** | **24.6%** | 🟢 Strong quick-commerce fulfillment |
+| **75 Hubs** | 1.8 km | **10.9 min** | **34.3%** | 🏆 Near-threshold 10-minute SLA guarantee |
 
 ---
 

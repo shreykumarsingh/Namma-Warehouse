@@ -16,7 +16,7 @@ export const NetworkOperationsPanel: React.FC<NetworkOperationsPanelProps> = Rea
 }) => {
   const evPct = config.evFleetPct ?? (config.evShare ?? 0);
   const petrolRate = config.petrolCostPerKm ?? 2.0;
-  const batchSize = config.batchSize && config.batchSize >= 12 ? config.batchSize : 23;
+  const batchSize = config.batchSize && config.batchSize >= 1 ? config.batchSize : 23;
 
   // Read backend costs or calculate from results
   const c = result.costs || {};

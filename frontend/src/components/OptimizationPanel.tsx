@@ -47,7 +47,7 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = React.memo(({
   const propertySize = config.propertySizeSqft ?? 2500;
   const petrolCost = Number((config.petrolCostPerKm ?? 2.0).toFixed(1));
   const batchSize =
-    config.batchSize && config.batchSize >= 12
+    config.batchSize && config.batchSize >= 1
       ? config.batchSize
       : 23;
   const minDispersion = Number((config.minDispersionKm ?? 6.5).toFixed(1));

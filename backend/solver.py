@@ -116,8 +116,8 @@ class GridpointSolver:
         c = 2 * np.arcsin(np.sqrt(a))
         # 6371.0 km Earth radius * 1.4 urban road circuity
         self.D_road = 6371.0 * c * 1.4
-        # Effective distance incorporating urban traffic congestion
-        self.D_traffic = self.D_road * (1.0 + 0.4 * self.traffic[None, :])
+        # Effective distance incorporating customer node urban traffic congestion
+        self.D_traffic = self.D_road * (1.0 + 0.45 * self.traffic[:, None])
 
     def get_city_summary(self) -> Dict[str, Any]:
         lats = self.coords[:, 0]
@@ -156,18 +156,25 @@ class GridpointSolver:
         capacity_limit: Optional[float] = None,
         ev_fleet_pct: float = 0.0,
         picking_time_min: float = 3.0,
-        target_sla_minutes: float = 10.0
+        target_sla_minutes: float = 10.0,
+        demand_multiplier: float = 1.0,
+        traffic_multiplier: float = 1.0
     ) -> Tuple[Optional[np.ndarray], Optional[Dict[str, float]], Optional[np.ndarray]]:
         """
         Anti-Deadlock Regret Assignment & Detailed Cost/Workforce/SLA/ESG Breakdown:
         - Allocates demand nodes using Regret-First priorities so isolated nodes are never starved.
-        - Computes driver workforce (mean 23 orders/day per driver @ Rs 1,000/day).
-        - Computes 10-Minute Quick-Commerce SLA delivery times and compliance %.
-        - Simulates EV Fleet Transition savings (Rs 2.00 petrol vs Rs 0.35 EV) and carbon reduction.
+        - Computes driver workforce using unclipped batch_size (deliveries/day/driver).
+        - Computes Quick-Commerce SLA delivery times and compliance % with customer traffic.
+        - Simulates EV Fleet Transition savings and carbon reduction.
         - Calculates facility rent under company budget.
         """
         if not sites:
             return None, None, None
+
+        eff_orders = self.orders * demand_multiplier
+        eff_total_orders = float(np.sum(eff_orders))
+        if eff_total_orders <= 0:
+            eff_total_orders = 1.0
 
         sub_D = self.D_road[:, sites] # shape: (800, len(sites))
 
@@ -180,12 +187,12 @@ class GridpointSolver:
                 return None, None, None
         else:
             # Capacitated: Anti-Deadlock Regret-First Assignment
-            cap = capacity_limit or ((self.total_orders / len(sites)) * 1.35)
+            cap = capacity_limit or ((eff_total_orders / len(sites)) * 1.35)
             site_loads = np.zeros(len(sites), dtype=np.float64)
             assigned_wh = np.full(self.n, -1, dtype=np.int32)
 
             if len(sites) == 1:
-                if self.total_orders > cap:
+                if eff_total_orders > cap:
                     return None, None, None
                 assigned_wh = np.zeros(self.n, dtype=np.int32)
                 min_dists = sub_D[:, 0]
@@ -200,8 +207,8 @@ class GridpointSolver:
                     for w in cand_order:
                         if max_radius is not None and sub_D[idx, w] > max_radius:
                             continue
-                        if site_loads[w] + self.orders[idx] <= cap:
-                            site_loads[w] += self.orders[idx]
+                        if site_loads[w] + eff_orders[idx] <= cap:
+                            site_loads[w] += eff_orders[idx]
                             assigned_wh[idx] = w
                             assigned = True
                             break
@@ -209,34 +216,29 @@ class GridpointSolver:
                         return None, None, None
                 min_dists = sub_D[np.arange(self.n), assigned_wh]
 
-        # Delivery Route Modeling:
-        # Deliveries per driver per day (range: 15-30, mean/default: 23)
-        daily_driver_orders = float(batch_size) if batch_size >= 12 else 23.0
-        trips = self.orders / daily_driver_orders
+        # Delivery Route Modeling with user batch size (no silent 23 clamp)
+        daily_driver_orders = float(max(1, batch_size))
+        trips = eff_orders / daily_driver_orders
         local_hop_km = 0.4
         trip_distance = (2.0 * min_dists) + ((daily_driver_orders - 1.0) * local_hop_km)
         daily_fleet_km = float(np.sum(trips * trip_distance))
 
         # 1. Kinematic Multi-Phase Urban Delivery Modeling:
         # Phase 1: Dynamic Fulfillment & Dispatch Staging
-        # Varies by user-specified picking time and local order volume density (queue depth)
-        staging_queue_impedance = 0.2 + 0.4 * (self.orders / np.mean(self.orders))
+        staging_queue_impedance = 0.2 + 0.4 * (eff_orders / np.mean(eff_orders))
         node_dispatch_staging = float(picking_time_min) + staging_queue_impedance
 
-        # Phase 2: Kinematic Road Transit in Urban Congestion
-        # Speed derived dynamically from free-flow urban rider speed and localized traffic impedance
+        # Phase 2: Kinematic Road Transit in Urban Congestion (Customer node congestion)
         v_free = 24.0  # Base free-flow velocity in km/h
-        traffic_impedance = 1.0 + 0.45 * self.traffic
+        traffic_impedance = 1.0 + 0.45 * (self.traffic * traffic_multiplier)
         v_effective = v_free / traffic_impedance
         riding_time = (min_dists / v_effective) * 60.0
-        # Signalized intersection and speed breaker delay proportional to local traffic index
-        signal_impedance_per_km = 0.15 + 0.20 * self.traffic
+        signal_impedance_per_km = (0.15 + 0.20 * self.traffic) * traffic_multiplier
         node_transit = riding_time + (min_dists * signal_impedance_per_km)
 
         # Phase 3: High-Density Building Access & Doorstep Handover (First/Last 100m)
-        # Varies dynamically with urban building height and localized demand density
         doorstep_base = 1.4
-        building_density_factor = 0.8 * (self.orders / np.max(self.orders))
+        building_density_factor = 0.8 * (eff_orders / np.max(eff_orders))
         node_doorstep = doorstep_base + building_density_factor
 
         # Order-to-Doorstep End-to-End Delivery Times across all demand nodes
@@ -244,17 +246,15 @@ class GridpointSolver:
 
         sla_threshold = float(target_sla_minutes)
         sla_mask = (node_delivery_times <= sla_threshold)
-        sla_compliant_orders = float(np.sum(self.orders[sla_mask]))
-        network_sla_compliance_pct = round(float((sla_compliant_orders / self.total_orders) * 100.0), 1)
-        network_avg_delivery_time = round(float(np.sum(self.orders * node_delivery_times) / self.total_orders), 1)
+        sla_compliant_orders = float(np.sum(eff_orders[sla_mask]))
+        network_sla_compliance_pct = round(float((sla_compliant_orders / eff_total_orders) * 100.0), 1)
+        network_avg_delivery_time = round(float(np.sum(eff_orders * node_delivery_times) / eff_total_orders), 1)
 
-        avg_dispatch_min = round(float(np.sum(self.orders * node_dispatch_staging) / self.total_orders), 1)
-        avg_transit_min = round(float(np.sum(self.orders * node_transit) / self.total_orders), 1)
-        avg_doorstep_min = round(float(np.sum(self.orders * node_doorstep) / self.total_orders), 1)
+        avg_dispatch_min = round(float(np.sum(eff_orders * node_dispatch_staging) / eff_total_orders), 1)
+        avg_transit_min = round(float(np.sum(eff_orders * node_transit) / eff_total_orders), 1)
+        avg_doorstep_min = round(float(np.sum(eff_orders * node_doorstep) / eff_total_orders), 1)
 
-        # 2. EV Transition and Fleet Green Savings Simulator (ESG Pitch):
-        # Petrol running cost: Rs 2.00 / km
-        # EV charging cost: Rs 0.35 / km (~82.5% cheaper)
+        # 2. EV Transition and Fleet Green Savings Simulator:
         petrol_rate = float(petrol_cost)
         ev_rate = 0.35
         daily_petrol_cost = round(daily_fleet_km * petrol_rate, 2)
@@ -273,12 +273,22 @@ class GridpointSolver:
         annual_co2_saved_tons = round(baseline_annual_co2_tons * ev_ratio, 1)
         remaining_annual_co2_tons = round(baseline_annual_co2_tons * (1.0 - ev_ratio), 1)
 
-        # Facility Rent (Company lease cost: commercial rent + power/staffing baseline)
+        # Facility Rent
         monthly_rent_per_site = (self.prices[sites] * property_size * 0.004) + 120000.0 * (self.prices[sites] / self.mean_price)
         monthly_rent = float(np.sum(monthly_rent_per_site))
         annual_rent = monthly_rent * 12.0
-        # Total annual operational economics = Facility Rent + Fleet Fuel (with EV savings applied)
-        total_annual = round(annual_rent + effective_annual_fuel, 2)
+
+        # Workforce Wages (Driver Fleet: ₹1,000/day per required driver)
+        site_orders_vec = np.zeros(len(sites), dtype=np.float64)
+        for r in range(len(sites)):
+            site_orders_vec[r] = np.sum(eff_orders[assigned_wh == r])
+        site_employees = np.ceil(site_orders_vec / daily_driver_orders).astype(int)
+        total_employees = int(np.sum(site_employees))
+        daily_driver_wages = float(total_employees * 1000.0)
+        annual_driver_wages = float(daily_driver_wages * 365.0)
+
+        # Total Annual Operational Expenditure: Rent + Fuel + Driver Wages
+        total_annual = round(annual_rent + effective_annual_fuel + annual_driver_wages, 2)
 
         return assigned_wh, {
             'daily_fleet_km': round(daily_fleet_km, 1),
@@ -288,6 +298,10 @@ class GridpointSolver:
             'annual_co2_tons': remaining_annual_co2_tons,
             'monthly_rent': round(monthly_rent, 2),
             'annual_rent': round(annual_rent, 2),
+            'total_employees': total_employees,
+            'daily_driver_wages': daily_driver_wages,
+            'monthly_driver_wages': round(daily_driver_wages * 30.0, 2),
+            'annual_driver_wages': round(annual_driver_wages, 2),
             'total_annual': round(total_annual, 2),
             'avg_delivery_time_min': network_avg_delivery_time,
             'avg_dispatch_time_min': avg_dispatch_min,
@@ -305,6 +319,100 @@ class GridpointSolver:
             'annual_co2_saved_tons': annual_co2_saved_tons
         }, node_delivery_times
 
+    def compute_baseline_metrics(
+        self,
+        property_size: float,
+        petrol_cost: float,
+        batch_size: int,
+        ev_fleet_pct: float = 0.0,
+        picking_time_min: float = 3.0,
+        target_sla_minutes: float = 10.0,
+        demand_multiplier: float = 1.0,
+        traffic_multiplier: float = 1.0
+    ) -> Dict[str, float]:
+        """
+        Computes the legitimate unoptimized baseline arrangement:
+        A single centralized distribution warehouse serving the whole city network.
+        Uses the exact same travel distances, dispatch times, traffic congestion, and fuel burn.
+        """
+        # One explicit, reproducible baseline definition: exactly one fixed central facility
+        # Candidate p385 (Ulsoor / Central Bengaluru) or candidate index 0
+        central_idx = 0
+        for i, pt in enumerate(self.points):
+            if pt.get('point_id') == 'p385' or pt.get('nearest_locality') == 'Ulsoor':
+                central_idx = i
+                break
+
+        _, costs, _ = self.compute_cost_and_assignment(
+            sites=[central_idx],
+            property_size=property_size,
+            petrol_cost=petrol_cost,
+            batch_size=batch_size,
+            max_radius=None,
+            use_capacity=False,
+            capacity_limit=None,
+            ev_fleet_pct=ev_fleet_pct,
+            picking_time_min=picking_time_min,
+            target_sla_minutes=target_sla_minutes,
+            demand_multiplier=demand_multiplier,
+            traffic_multiplier=traffic_multiplier
+        )
+
+        if costs is None:
+            return {
+                'total_cost_lakhs': 0.0,
+                'avg_delivery_time_min': 0.0,
+                'fuel_consumed_liters': 0.0,
+                'co2_emissions_tons': 0.0,
+                'sla_compliance_pct': 0.0,
+                'annual_fuel_cost': 0.0,
+                'monthly_rent': 0.0,
+                'annual_driver_wages': 0.0,
+                'total_annual': 0.0
+            }
+
+        return {
+            'total_cost_lakhs': round(costs['total_annual'] / 100000.0, 1),
+            'avg_delivery_time_min': costs['avg_delivery_time_min'],
+            'fuel_consumed_liters': round(costs['daily_fuel_liters'] * 365.0, 1),
+            'co2_emissions_tons': costs['annual_co2_tons'],
+            'sla_compliance_pct': costs['sla_compliance_pct'],
+            'annual_fuel_cost': costs['annual_fuel'],
+            'monthly_rent': costs['monthly_rent'],
+            'annual_driver_wages': costs.get('annual_driver_wages', 0.0),
+            'total_annual': costs['total_annual']
+        }
+
+    def load_custom_points(self, custom_points: List[Dict[str, Any]]):
+        """Loads and indexes custom user-uploaded neighborhood points."""
+        self.points = []
+        for i, p in enumerate(custom_points):
+            lat = float(p.get('latitude', p.get('lat', 12.97)))
+            lng = float(p.get('longitude', p.get('lng', 77.59)))
+            self.points.append({
+                'point_id': str(p.get('point_id', p.get('id', f'p{i+1:03d}'))),
+                'latitude': lat,
+                'longitude': lng,
+                'orders_per_day': float(p.get('orders_per_day', p.get('orders', 100))),
+                'price_per_sqft': float(p.get('price_per_sqft', p.get('sqft', 9000))),
+                'traffic_index': float(p.get('traffic_index', p.get('traffic', 0.5))),
+                'norm_demand': float(p.get('norm_demand', 0.5)),
+                'norm_price': float(p.get('norm_price', 0.5)),
+                'norm_traffic': float(p.get('norm_traffic', 0.5)),
+                'suitability_score': float(p.get('suitability_score', 0.5)),
+                'nearest_locality': str(p.get('nearest_locality', p.get('name', f'Area {i+1}'))),
+                'zone': str(p.get('zone', 'Central'))
+            })
+        self.n = len(self.points)
+        self.coords = np.array([[p['latitude'], p['longitude']] for p in self.points], dtype=np.float64)
+        self.orders = np.array([p['orders_per_day'] for p in self.points], dtype=np.float64)
+        self.prices = np.array([p['price_per_sqft'] for p in self.points], dtype=np.float64)
+        self.traffic = np.array([p['traffic_index'] for p in self.points], dtype=np.float64)
+        self.total_orders = float(np.sum(self.orders))
+        self.mean_price = float(np.mean(self.prices)) if self.n > 0 else 9000.0
+        self.shifts = self.orders / 23.0
+        self.build_distance_matrix()
+
     def solve(
         self,
         num_warehouses: int = 3,
@@ -318,18 +426,45 @@ class GridpointSolver:
         capacity_per_warehouse: Optional[float] = None,
         ev_fleet_pct: float = 0.0,
         picking_time_min: float = 3.0,
-        target_sla_minutes: float = 10.0
+        target_sla_minutes: float = 10.0,
+        demand_multiplier: float = 1.0,
+        traffic_multiplier: float = 1.0,
+        disabled_warehouse_ids: Optional[List[str]] = None,
+        custom_points: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """
-        Fast Discrete Facility Location Optimizer supporting up to 100 Warehouses:
+        Discrete Facility Location Optimizer with Integrated Real Estate Economics:
         1. Input validation (p between 1 and 100)
-        2. Facility rent budget check (all 800 candidate nodes eligible)
-        3. Adaptive spatial dispersion scaling to ensure 1 to 100 hubs fit seamlessly
-        4. Incremental distance vectorization for ultra-fast greedy seeding (<150 ms)
-        5. Vectorized local swap search
-        6. Delivery workforce allocation: 23 orders/day per driver @ Rs 1,000/day
+        2. Facility rent budget check & candidate filtering
+        3. Exclusion of disabled warehouses (scenario analysis)
+        4. Spatial dispersion scaling
+        5. Joint rent-transport placement objective
+        6. Deterministic vectorized swap search
+        7. Full baseline network comparison calculation
         """
         start_time = time.time()
+
+        # If custom points are passed, instantiate temporary solver
+        if custom_points and len(custom_points) > 0:
+            sub_solver = GridpointSolver(self.data_path, self.locality_path)
+            sub_solver.load_custom_points(custom_points)
+            return sub_solver.solve(
+                num_warehouses=num_warehouses,
+                budget_monthly=budget_monthly,
+                property_size_sqft=property_size_sqft,
+                petrol_cost_per_km=petrol_cost_per_km,
+                batch_size=batch_size,
+                min_dispersion_km=min_dispersion_km,
+                max_radius_km=max_radius_km,
+                use_capacity=use_capacity,
+                capacity_per_warehouse=capacity_per_warehouse,
+                ev_fleet_pct=ev_fleet_pct,
+                picking_time_min=picking_time_min,
+                target_sla_minutes=target_sla_minutes,
+                demand_multiplier=demand_multiplier,
+                traffic_multiplier=traffic_multiplier,
+                disabled_warehouse_ids=disabled_warehouse_ids
+            )
 
         # 1. Input Validation
         max_allowed_p = min(100, self.n)
@@ -383,13 +518,35 @@ class GridpointSolver:
             }
 
         p = num_warehouses
+        eff_orders = self.orders * demand_multiplier
+        daily_driver_orders = float(max(1, batch_size))
+        eff_shifts = eff_orders / daily_driver_orders
 
-        # Monthly facility cost per candidate node (Facility Rent Only)
+        # Effective customer traffic-adjusted road distance
+        D_traffic = self.D_road * (1.0 + 0.45 * (self.traffic[:, None] * traffic_multiplier))
+
+        # Monthly facility cost per candidate node (Facility Rent)
         single_site_monthly_rents = (self.prices * property_size_sqft * 0.004) + 120000.0 * (self.prices / self.mean_price)
+        single_site_annual_rents = single_site_monthly_rents * 12.0
         sorted_rents = np.sort(single_site_monthly_rents)
         min_possible_rent = float(np.sum(sorted_rents[:p]))
 
-        # 2. Facility Rent Budget Feasibility Check
+        # 2. Network Capacity & Facility Rent Budget Feasibility Check
+        if use_capacity and capacity_per_warehouse is not None and capacity_per_warehouse > 0:
+            total_network_cap = float(p * capacity_per_warehouse)
+            total_network_dem = float(np.sum(eff_orders))
+            if total_network_cap < total_network_dem:
+                return {
+                    'status': 'infeasible',
+                    'reason': 'capacity',
+                    'message': f"Insufficient network capacity. Total demand ({total_network_dem:,.0f} orders) exceeds total capacity of {p} warehouses ({total_network_cap:,.0f} orders). Add more warehouses or increase warehouse capacity.",
+                    'suggested_budget': None,
+                    'warehouses': [],
+                    'assignments': [],
+                    'costs': None,
+                    'meta': {'solve_time_ms': round((time.time() - start_time) * 1000, 2)}
+                }
+
         if budget_monthly is not None and budget_monthly < min_possible_rent:
             return {
                 'status': 'infeasible',
@@ -402,7 +559,7 @@ class GridpointSolver:
                 'meta': {'solve_time_ms': round((time.time() - start_time) * 1000, 2)}
             }
 
-        # 3. Candidate Pool (All 800 nodes eligible)
+        # 3. Candidate Pool
         if budget_monthly is not None:
             max_single_rent = budget_monthly - np.sum(sorted_rents[:p-1]) if p > 1 else budget_monthly
             cand_indices = np.where(single_site_monthly_rents <= max_single_rent)[0]
@@ -411,32 +568,54 @@ class GridpointSolver:
         else:
             cand_indices = np.arange(self.n)
 
-        # 4. Adaptive Spatial Dispersion:
-        # Bangalore city bounds ~25 km extent. Maximum packing separation for p hubs is ~25 / sqrt(p).
-        # We auto-cap and gracefully relax dispersion if needed to ensure all p hubs can be placed.
+        # Filter out disabled warehouse candidates
+        if disabled_warehouse_ids:
+            dis_set = set(disabled_warehouse_ids)
+            allowed = []
+            for idx in cand_indices:
+                p_item = self.points[idx]
+                if p_item['point_id'] not in dis_set and p_item['nearest_locality'] not in dis_set and f"W{idx+1}" not in dis_set:
+                    allowed.append(idx)
+            cand_indices = np.array(allowed, dtype=np.int32)
+            if len(cand_indices) < p:
+                return {
+                    'status': 'infeasible',
+                    'reason': 'disabled_hubs',
+                    'message': f"Too many candidate hubs were disabled ({len(disabled_warehouse_ids)} disabled). Cannot place {p} warehouses.",
+                    'warehouses': [],
+                    'assignments': [],
+                    'costs': None,
+                    'meta': {'solve_time_ms': round((time.time() - start_time) * 1000, 2)}
+                }
+
+        # 4. Adaptive Spatial Dispersion
         max_packing_d = 25.0 / np.sqrt(p) if p > 1 else 0.0
         d_min = min(min_dispersion_km, max_packing_d) if p > 1 else 0.0
 
+        transport_weight = petrol_cost_per_km * 2.0 * 365.0
         current_sites: List[int] = []
         attempts = 0
         max_attempts = 10
 
         while attempts < max_attempts and len(current_sites) < p:
             current_sites = []
-            
-            # First warehouse: choose hub with lowest weighted traffic-distance
-            cand_costs_init = self.shifts.dot(self.D_traffic[:, cand_indices])
-            best_first = cand_indices[int(np.argmin(cand_costs_init))]
-            current_sites.append(best_first)
-            curr_min_dists = self.D_traffic[:, best_first].copy()
 
-            # Incrementally place remaining (p - 1) hubs with vectorized lookahead
+            # First warehouse: choose hub minimizing weighted travel + annual lease
+            cand_traffic_dists = D_traffic[:, cand_indices]
+            first_transport = eff_shifts.dot(cand_traffic_dists) * transport_weight
+            first_eval_costs = first_transport + single_site_annual_rents[cand_indices]
+            best_first = cand_indices[int(np.argmin(first_eval_costs))]
+            current_sites.append(best_first)
+            curr_min_dists = D_traffic[:, best_first].copy()
+
+            # Incrementally place remaining (p - 1) hubs with lookahead
             for step in range(1, p):
                 rem_p = p - step - 1
 
-                # Incremental distance calculation: min(curr_min, D[:, cand])
-                cand_mins = np.minimum(curr_min_dists[:, None], self.D_traffic) # (800, 800)
-                cand_eval_costs = self.shifts.dot(cand_mins) # shape: (800,)
+                cand_mins = np.minimum(curr_min_dists[:, None], D_traffic) # (800, 800)
+                cand_transport = eff_shifts.dot(cand_mins) * transport_weight
+                # Placement objective incorporates real estate rent directly
+                cand_eval_costs = cand_transport + single_site_annual_rents
 
                 # Mask out already selected sites
                 cand_eval_costs[current_sites] = np.inf
@@ -454,9 +633,15 @@ class GridpointSolver:
                     exceeds_budget = (spent_so_far + single_site_monthly_rents + future_min_spent) > budget_monthly
                     cand_eval_costs[exceeds_budget] = np.inf
 
+                # Enforce radius constraint during final placement evaluation
+                if max_radius_km is not None and step == p - 1:
+                    curr_road_mins = np.min(self.D_road[:, current_sites], axis=1)
+                    cand_road_mins = np.minimum(curr_road_mins[:, None], self.D_road)
+                    cand_max_road = np.max(cand_road_mins, axis=0)
+                    cand_eval_costs[cand_max_road > max_radius_km] = np.inf
+
                 valid_candidates = np.where(cand_eval_costs < np.inf)[0]
                 if len(valid_candidates) == 0:
-                    # Infeasible with current d_min, trigger relaxation
                     break
 
                 best_cand = int(valid_candidates[np.argmin(cand_eval_costs[valid_candidates])])
@@ -466,7 +651,6 @@ class GridpointSolver:
             if len(current_sites) == p:
                 break
 
-            # Relax dispersion slightly and retry
             d_min *= 0.80
             attempts += 1
 
@@ -482,40 +666,75 @@ class GridpointSolver:
                 'meta': {'solve_time_ms': round((time.time() - start_time) * 1000, 2)}
             }
 
-        # 5. Fast Vectorized Spatial Local Swap Search
+        # 5. Fast Vectorized Spatial Local Swap Search (Deterministic seed 42)
         if p > 1:
-            max_swap_iters = 8 if p <= 10 else 2
+            rng = np.random.RandomState(42)
+            max_swap_iters = 8 if p <= 15 else 4
             for _ in range(max_swap_iters):
                 improved = False
-                hubs_to_check = range(p) if p <= 15 else np.random.choice(p, 15, replace=False)
+                hubs_to_check = range(p) if p <= 20 else rng.choice(p, 20, replace=False)
 
                 for i in hubs_to_check:
                     other_sites = [current_sites[k] for k in range(p) if k != i]
-                    base_min = np.min(self.D_traffic[:, other_sites], axis=1)
-                    cand_mins = np.minimum(base_min[:, None], self.D_traffic)
-                    cand_costs = self.shifts.dot(cand_mins)
+                    base_min = np.min(D_traffic[:, other_sites], axis=1)
+                    cand_mins = np.minimum(base_min[:, None], D_traffic)
+                    cand_transport = eff_shifts.dot(cand_mins) * transport_weight
+                    cand_costs = cand_transport + single_site_annual_rents
 
                     # Exclude existing sites
                     cand_costs[other_sites] = np.inf
                     cand_costs[current_sites[i]] = np.inf
+
+                    # Exclude disabled sites
+                    if disabled_warehouse_ids:
+                        for idx_d in range(self.n):
+                            p_chk = self.points[idx_d]
+                            if p_chk['point_id'] in dis_set or p_chk['nearest_locality'] in dis_set or f"W{idx_d+1}" in dis_set:
+                                cand_costs[idx_d] = np.inf
 
                     # Dispersion check
                     if d_min > 0:
                         for s in other_sites:
                             cand_costs[self.D_road[:, s] < d_min] = np.inf
 
+                    # Radius feasibility check during local swap evaluation
+                    if max_radius_km is not None:
+                        base_road_min = np.min(self.D_road[:, other_sites], axis=1)
+                        cand_road_mins = np.minimum(base_road_min[:, None], self.D_road)
+                        cand_max_road = np.max(cand_road_mins, axis=0)
+                        cand_costs[cand_max_road > max_radius_km] = np.inf
+
                     # Budget check
                     if budget_monthly is not None:
                         other_rent = float(np.sum(single_site_monthly_rents[other_sites]))
                         cand_costs[(other_rent + single_site_monthly_rents) > budget_monthly] = np.inf
 
-                    valid = np.where(cand_costs < np.inf)[0]
-                    if len(valid) > 0:
+                    while True:
+                        valid = np.where(cand_costs < np.inf)[0]
+                        if len(valid) == 0:
+                            break
                         best_cand_idx = int(valid[np.argmin(cand_costs[valid])])
-                        current_cost = float(np.sum(self.shifts * np.minimum(base_min, self.D_traffic[:, current_sites[i]])))
-                        if cand_costs[best_cand_idx] < current_cost - 1e-1:
-                            current_sites[i] = best_cand_idx
-                            improved = True
+                        current_base_dist = np.minimum(base_min, D_traffic[:, current_sites[i]])
+                        current_cost = float(np.sum(eff_shifts * current_base_dist)) * transport_weight + single_site_annual_rents[current_sites[i]]
+                        if cand_costs[best_cand_idx] >= current_cost - 1e-1:
+                            break
+
+                        if use_capacity:
+                            test_sites = other_sites + [best_cand_idx]
+                            test_assign, test_cost, _ = self.compute_cost_and_assignment(
+                                test_sites, property_size_sqft, petrol_cost_per_km, batch_size,
+                                max_radius=max_radius_km, use_capacity=True, capacity_limit=capacity_per_warehouse,
+                                ev_fleet_pct=ev_fleet_pct, picking_time_min=picking_time_min, target_sla_minutes=target_sla_minutes,
+                                demand_multiplier=demand_multiplier, traffic_multiplier=traffic_multiplier
+                            )
+                            if test_assign is None or test_cost is None:
+                                # Candidate violates capacity limits; reject candidate during search
+                                cand_costs[best_cand_idx] = np.inf
+                                continue
+
+                        current_sites[i] = best_cand_idx
+                        improved = True
+                        break
 
                 if not improved:
                     break
@@ -540,7 +759,8 @@ class GridpointSolver:
         assigned_wh, final_costs, node_delivery_times = self.compute_cost_and_assignment(
             current_sites, property_size_sqft, petrol_cost_per_km, batch_size,
             max_radius=max_radius_km, use_capacity=use_capacity, capacity_limit=capacity_per_warehouse,
-            ev_fleet_pct=ev_fleet_pct, picking_time_min=picking_time_min, target_sla_minutes=target_sla_minutes
+            ev_fleet_pct=ev_fleet_pct, picking_time_min=picking_time_min, target_sla_minutes=target_sla_minutes,
+            demand_multiplier=demand_multiplier, traffic_multiplier=traffic_multiplier
         )
 
         if final_costs is None or assigned_wh is None:
@@ -568,35 +788,30 @@ class GridpointSolver:
         warehouses_out = []
         total_network_employees = 0
 
-        # Compute order loads across all selected sites first
-        site_orders_list = [float(np.sum(self.orders[assigned_wh == r])) for r in range(p)]
+        # Compute order loads across all selected sites
+        site_orders_list = [float(np.sum(eff_orders[assigned_wh == r])) for r in range(p)]
         max_site_orders = max(site_orders_list) if site_orders_list else 0.0
 
-        # Standardized warehouse network capacity: sized to comfortably handle the peak catchment area with headroom, or at least 35% above network average
-        default_network_cap = float(int(np.ceil(max(max_site_orders * 1.10, (self.total_orders / p) * 1.35) / 50.0) * 50))
+        default_network_cap = float(int(np.ceil(max(max_site_orders * 1.10, (float(np.sum(eff_orders)) / p) * 1.35) / 50.0) * 50))
 
         for rank, site_idx in enumerate(current_sites):
             pt = self.points[site_idx]
             assigned_mask = (assigned_wh == rank)
             site_orders = site_orders_list[rank]
             base_cap = capacity_per_warehouse or default_network_cap
-            # Ensure warehouse capacity accommodates assigned throughput
             cap = max(base_cap, float(int(np.ceil((site_orders * 1.05) / 50.0) * 50)))
             util_pct = min(100.0, round((site_orders / cap) * 100.0, 1)) if cap > 0 else 100.0
 
             m_rent = (pt['price_per_sqft'] * property_size_sqft * 0.004) + 120000.0 * (pt['price_per_sqft'] / self.mean_price)
             a_rent = m_rent * 12.0
 
-            # Workforce: Deliveries per driver per day (mean 23, or user-configured 15-30) @ Rs 1,000/day
-            daily_driver_orders = float(batch_size) if batch_size >= 12 else 23.0
             employees_req = int(np.ceil(site_orders / daily_driver_orders)) if site_orders > 0 else 0
             daily_salary = float(employees_req * 1000.0)
             monthly_salary = float(daily_salary * 30.0)
             total_network_employees += employees_req
 
-            # Per-warehouse 10-Minute SLA & Average Delivery Time
             if site_orders > 0 and node_delivery_times is not None:
-                wh_orders = self.orders[assigned_mask]
+                wh_orders = eff_orders[assigned_mask]
                 wh_times = node_delivery_times[assigned_mask]
                 wh_avg_time = round(float(np.sum(wh_orders * wh_times) / site_orders), 1)
                 wh_sla_orders = float(np.sum(wh_orders[wh_times <= target_sla_minutes]))
@@ -640,7 +855,6 @@ class GridpointSolver:
                 'distance_km': round(dist_km, 2)
             })
 
-        # Final workforce totals
         daily_driver_wages = float(total_network_employees * 1000.0)
         monthly_driver_wages = float(daily_driver_wages * 30.0)
         avg_km_driver = round(final_costs['daily_fleet_km'] / max(1, total_network_employees), 1)
@@ -648,12 +862,26 @@ class GridpointSolver:
         final_costs['total_employees'] = total_network_employees
         final_costs['daily_driver_wages'] = daily_driver_wages
         final_costs['monthly_driver_wages'] = monthly_driver_wages
+        final_costs['annual_driver_wages'] = round(daily_driver_wages * 365.0, 2)
         final_costs['avg_km_per_driver'] = avg_km_driver
+        final_costs['total_annual'] = round(final_costs['annual_rent'] + final_costs['annual_fuel'] + final_costs['annual_driver_wages'], 2)
 
         budget_pct = None
         if budget_monthly and budget_monthly > 0:
             budget_pct = round((final_costs['monthly_rent'] / budget_monthly) * 100.0, 1)
         final_costs['budget_used_pct'] = budget_pct
+
+        # 8. Compute Real Baseline Comparison (Single Centralized Warehouse Hub)
+        baseline_metrics = self.compute_baseline_metrics(
+            property_size=property_size_sqft,
+            petrol_cost=petrol_cost_per_km,
+            batch_size=batch_size,
+            ev_fleet_pct=ev_fleet_pct,
+            picking_time_min=picking_time_min,
+            target_sla_minutes=target_sla_minutes,
+            demand_multiplier=demand_multiplier,
+            traffic_multiplier=traffic_multiplier
+        )
 
         solve_time = round((time.time() - start_time) * 1000, 2)
 
@@ -662,6 +890,7 @@ class GridpointSolver:
             'warehouses': warehouses_out,
             'assignments': assignments_out,
             'costs': final_costs,
+            'baseline': baseline_metrics,
             'meta': {
                 'solve_time_ms': solve_time,
                 'points_evaluated': self.n,
@@ -678,40 +907,27 @@ class GridpointSolver:
         batch_size: int = 23,
         min_dispersion_km: float = 6.5,
         target_p: Optional[int] = None,
-        ev_fleet_pct: float = 0.0
+        ev_fleet_pct: float = 0.0,
+        demand_multiplier: float = 1.0,
+        traffic_multiplier: float = 1.0
     ) -> Dict[str, Any]:
         """
-        Computes the cost trade-off data across candidate warehouse counts.
-        If target_p is provided, selects a representative spread around target_p that includes it.
-        Also incorporates ev_fleet_pct for consistent green fleet economics.
+        Computes true U-curve trade-off data across a broad spectrum of candidate hub counts.
+        Evaluates from 1 up to 45 hubs to capture both the steep drop in fuel travel cost
+        and the subsequent rise as facility leases dominate, identifying the true global cost minimum.
         """
         tradeoff_points = []
         best_p = 1
         lowest_cost = float('inf')
 
-        # Determine warehouse counts to evaluate (clamped to max_allowed_p = 100)
         max_p = min(100, self.n)
-        safe_target_p = min(max_p, max(1, target_p)) if target_p is not None else None
+        safe_target_p = min(max_p, max(1, target_p)) if target_p is not None else 3
 
-        if safe_target_p is not None and safe_target_p > 5:
-            # Generate representative spread that includes target_p and strictly stays <= max_p
-            step_counts = {
-                1,
-                max(2, int(safe_target_p * 0.35)),
-                max(3, int(safe_target_p * 0.65)),
-                safe_target_p,
-            }
-            if safe_target_p < max_p:
-                step_counts.add(min(max_p, int(safe_target_p * 1.35)))
-            if safe_target_p >= 70:
-                step_counts.update({10, 25, 50, 75, max_p})
-            eval_counts = sorted(list(step_counts))
-        else:
-            eval_counts = [1, 2, 3, 4, 5, 6]
+        # Standard representative candidate evaluation set spanning 1 to 45
+        sample_counts = {1, 2, 3, 4, 6, 8, 12, 16, 20, 25, 30, 35, 40, 45, safe_target_p}
+        eval_counts = sorted([k for k in sample_counts if 1 <= k <= max_p])
 
         for k in eval_counts:
-            if k < 1 or k > max_p:
-                continue
             res = self.solve(
                 num_warehouses=k,
                 budget_monthly=budget_monthly,
@@ -719,10 +935,11 @@ class GridpointSolver:
                 petrol_cost_per_km=petrol_cost_per_km,
                 batch_size=batch_size,
                 min_dispersion_km=min_dispersion_km,
-                ev_fleet_pct=ev_fleet_pct
+                ev_fleet_pct=ev_fleet_pct,
+                demand_multiplier=demand_multiplier,
+                traffic_multiplier=traffic_multiplier
             )
             if res['status'] == 'ok' and res['costs'] is not None and res['costs']['total_annual'] > 0:
-                # Total annual logistics cost = Facility Rent + Fleet Fuel (with EV rate)
                 total_economic = res['costs']['total_annual']
                 if total_economic < lowest_cost:
                     lowest_cost = total_economic
@@ -732,11 +949,12 @@ class GridpointSolver:
                     'monthly_rent': res['costs']['monthly_rent'],
                     'annual_rent': res['costs']['annual_rent'],
                     'annual_fuel': res['costs']['annual_fuel'],
+                    'annual_wages': res['costs'].get('annual_driver_wages', 0.0),
                     'total_annual': total_economic,
                     'feasible': True
                 })
 
         return {
             'points': tradeoff_points,
-            'recommended_p': safe_target_p if safe_target_p is not None else best_p
+            'recommended_p': best_p
         }

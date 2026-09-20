@@ -65,9 +65,10 @@ export function calculateFuelLiters(
 }
 
 /**
- * Calculates CO2 emissions in kg from diesel fuel:
- * 1 Liter diesel burning yields ~2.68 kg CO2
+ * Calculates CO2 emissions in kg from fleet fuel:
+ * 1 Liter petrol burning yields ~2.31 kg CO2
  */
 export function calculateCO2Kg(fuelLiters: number): number {
-  return Number((fuelLiters * 2.68).toFixed(1));
+  return Number((fuelLiters * 2.31).toFixed(1));
 }
+
