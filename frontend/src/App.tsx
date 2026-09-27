@@ -18,6 +18,7 @@ import {
   GridPoint,
 } from './types';
 import { api } from './services/api';
+import { formatINR } from './utils/formatters';
 
 const INITIAL_NOTIFICATIONS: AppNotification[] = [
   {
@@ -60,7 +61,7 @@ export function App() {
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [currentStep, setCurrentStep] = useState('');
   const [stepIndex, setStepIndex] = useState(0);
-  const [customPoints] = useState<GridPoint[] | undefined>(undefined);
+  const [customPoints, setCustomPoints] = useState<GridPoint[] | undefined>(undefined);
 
   // Modals & Drawer state
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -102,6 +103,19 @@ export function App() {
       try {
         const status = await api.checkBackendHealth();
         if (status.online && isMounted) {
+          const cityData = await api.fetchCityData();
+          if (cityData?.points && isMounted) {
+            const mappedPoints: GridPoint[] = cityData.points.map((p) => ({
+              id: p.point_id,
+              lat: p.latitude,
+              lng: p.longitude,
+              orders: p.orders_per_day,
+              price: p.price_per_sqft,
+              traffic: p.traffic_index,
+              zoneName: p.zone,
+            }));
+            setCustomPoints(mappedPoints);
+          }
           const freshResult = await api.optimizeNetwork(config);
           if (isMounted) {
             setResult(freshResult);
@@ -144,7 +158,7 @@ export function App() {
         id: Date.now().toString(),
         time: 'Just now',
         title: 'Network Optimized',
-        detail: `${newResult.selectedWarehouseIds.length} hubs selected with ₹${newResult.kpi.totalCostLakhs.toFixed(1)}L annual cost.`,
+        detail: `${newResult.selectedWarehouseIds.length} hubs selected with ${formatINR(newResult.kpi.totalCostLakhs)} annual cost.`,
         read: false,
         type: 'success',
       };
@@ -182,29 +196,34 @@ export function App() {
         onMarkAllRead={handleMarkAllRead}
       />
 
-      {/* ── Hero Banner ── */}
-      <HeroBanner
-        activeHubsCount={result.selectedWarehouseIds.length}
-        onOpenEnquiry={() => setIsEnquiryOpen(true)}
-      />
+      {/* ── Hero Banner (Executive Command Hub - Main Dashboard) ── */}
+      {activeTab === 'dashboard' && (
+        <HeroBanner
+          activeHubsCount={result.selectedWarehouseIds.length}
+          totalCostLakhs={result.kpi.totalCostLakhs}
+          avgDeliveryTime={result.kpi.avgDeliveryTimeMin}
+          co2Pct={Math.round(
+            result.kpi.baseline?.co2EmissionsTons
+              ? Math.max(
+                  5,
+                  ((result.kpi.baseline.co2EmissionsTons - result.kpi.co2EmissionsTons) /
+                    result.kpi.baseline.co2EmissionsTons) *
+                    100
+                )
+              : 23
+          )}
+          isOptimizing={isOptimizing}
+          onRunOptimization={handleRunOptimization}
+          onOpenTour={() => setIsTourOpen(true)}
+          onOpenEnquiry={() => setIsEnquiryOpen(true)}
+        />
+      )}
 
-      {/* ── Logistics Transit Banner ── */}
-      <LogisticsTransitBanner />
+      {/* ── Logistics Transit Telemetry Banner ── */}
+      {activeTab === 'dashboard' && <LogisticsTransitBanner />}
 
       {/* ── Main Content Area ── */}
       <main className="main-content flex-1">
-        {/* Page Tabs */}
-        <div className="page-tabs" id="page-tabs">
-          {FEATURES.map((f) => (
-            <button
-              key={f.id}
-              className={`page-tab ${f.id === activeTab ? 'active' : ''}`}
-              onClick={() => setActiveTab(f.id)}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
 
         {/* Tab 1: Dashboard */}
         {activeTab === 'dashboard' && (
@@ -237,7 +256,7 @@ export function App() {
                 {
                   id: Date.now().toString(),
                   type: 'capacity',
-                  msg: `Scenario recalculated: ₹${newRes.kpi.totalCostLakhs.toFixed(1)}L annual cost • ${newRes.kpi.avgDeliveryTimeMin.toFixed(1)} min SLA`,
+                  msg: `Scenario recalculated: ${formatINR(newRes.kpi.totalCostLakhs)} annual cost • ${newRes.kpi.avgDeliveryTimeMin.toFixed(1)} min SLA`,
                   time: 'Just now',
                 },
                 ...prev,

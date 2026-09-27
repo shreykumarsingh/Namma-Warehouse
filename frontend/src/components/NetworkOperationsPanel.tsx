@@ -1,4 +1,5 @@
 import React from 'react';
+import { AlertCircle } from 'lucide-react';
 import {
   OptimizationConfig,
   OptimizationResult,
@@ -16,11 +17,11 @@ export const NetworkOperationsPanel: React.FC<NetworkOperationsPanelProps> = Rea
 }) => {
   const evPct = config.evFleetPct ?? (config.evShare ?? 0);
   const petrolRate = config.petrolCostPerKm ?? 2.0;
-  const batchSize = config.batchSize && config.batchSize >= 1 ? config.batchSize : 23;
+  const batchSize = config.batchSize && config.batchSize >= 12 ? config.batchSize : 23;
 
   // Read backend costs or calculate from results
   const c = result.costs || {};
-  const totalOrders = result.warehouses.reduce((sum, w) => sum + (w.demandServed || 0), 0) || 1200000;
+  const totalOrders = result.warehouses.reduce((sum, w) => sum + (w.demandServed || 0), 0);
   
   // SLA metrics
   const sla = c.sla_compliance_pct ?? result.kpi.slaCompliancePercent ?? 0;
@@ -68,19 +69,38 @@ export const NetworkOperationsPanel: React.FC<NetworkOperationsPanelProps> = Rea
   const totalAnnualCost = annualRent + effectiveAnnualFuel;
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 w-full h-full xl:h-[740px] overflow-y-auto text-xs select-none space-y-4">
+    <div className="bg-white rounded-xl border border-[#E8DFC9] shadow-sm p-4 w-full h-full xl:h-[740px] overflow-y-auto text-xs select-none space-y-4">
       {/* Header */}
-      <h2 className="text-sm font-semibold text-gray-900 pb-2 border-b border-gray-100">
-        Network & Operations
+      <h2 className="text-sm font-bold text-[#261B14] font-['Space_Grotesk'] pb-2 border-b border-[#F3EFE6]">
+        Network &amp; Operations
       </h2>
 
+      {/* Infeasible Network Banner */}
+      {result?.status === 'infeasible' && (
+        <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-800 space-y-1.5">
+          <div className="flex items-center gap-1.5 font-semibold">
+            <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+            <span>Network Infeasible: {result.infeasibleReason || 'Constraint Violation'}</span>
+          </div>
+          <p className="text-[11px] text-red-600 leading-tight">
+            {result.infeasibleMessage || 'Constraints cannot be met without severe clustering and deadlock for other regions.'}
+          </p>
+          {result.suggestedBudget !== undefined && (
+            <div className="pt-1.5 text-[11px] font-medium border-t border-red-200 flex justify-between">
+              <span>Suggested Budget:</span>
+              <span className="font-mono">₹{(result.suggestedBudget / 100000).toFixed(1)} L/mo</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 10-Minute SLA Section */}
-      <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-2">
+      <div className="bg-[#FAF7EF] border border-[#E8DFC9] rounded-xl p-3 space-y-2">
         <div className="flex justify-between items-center">
-          <span className="font-semibold text-gray-700 text-xs">
+          <span className="font-bold text-[#261B14] text-xs">
             10-Min Quick-Commerce SLA
           </span>
-          <span className="text-[11px] font-medium text-gray-500">
+          <span className="text-[11px] font-semibold text-[#7A7168]">
             Target: ≤ 10 min
           </span>
         </div>
@@ -88,18 +108,18 @@ export const NetworkOperationsPanel: React.FC<NetworkOperationsPanelProps> = Rea
         <div className="flex justify-between items-baseline">
           <div className="flex items-baseline gap-2">
             <span
-              className="text-2xl font-bold tabular-nums"
+              className="text-2xl font-extrabold tabular-nums font-['Space_Grotesk']"
               style={{ color: slaColor }}
             >
               {sla.toFixed(1)}%
             </span>
-            <span className="text-[11px] text-gray-500">{slaLabel}</span>
+            <span className="text-[11px] text-[#7A7168] font-medium">{slaLabel}</span>
           </div>
           <div className="text-right">
-            <div className="text-[10px] text-gray-500">Avg Delivery</div>
+            <div className="text-[10px] text-[#7A7168]">Avg Delivery</div>
             <div
-              className="text-base font-semibold tabular-nums"
-              style={{ color: avgTime <= 10 ? '#059669' : '#DC2626' }}
+              className="text-base font-bold tabular-nums"
+              style={{ color: avgTime <= 10 ? '#059669' : '#9E471A' }}
             >
               {avgTime.toFixed(1)} min
             </div>
@@ -107,7 +127,7 @@ export const NetworkOperationsPanel: React.FC<NetworkOperationsPanelProps> = Rea
         </div>
 
         {/* Progress bar */}
-        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+        <div className="h-2 bg-[#E8DFC9] rounded-full overflow-hidden">
           <div
             className="h-full rounded-full transition-all duration-300"
             style={{
@@ -121,30 +141,32 @@ export const NetworkOperationsPanel: React.FC<NetworkOperationsPanelProps> = Rea
       {/* EV Transition Section */}
       <div className="space-y-2">
         <div className="flex justify-between items-center">
-          <span className="font-semibold text-gray-700 text-xs">EV Fleet Savings</span>
-          <span className="text-[11px] font-medium text-emerald-600">{evPct.toFixed(0)}% EV</span>
+          <span className="font-bold text-[#261B14] text-xs">EV Fleet Economics</span>
+          <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+            {evPct.toFixed(0)}% EV Fleet
+          </span>
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          <div className="bg-gray-50 border border-gray-200 rounded-md p-2">
-            <div className="text-[10px] text-gray-500 uppercase font-medium">Petrol Fleet Cost</div>
-            <div className="text-sm font-semibold text-gray-900 tabular-nums mt-0.5">{formatRupeesRaw(petrolDaily * (1 - evRatio))}/day</div>
-            <div className="text-[10px] text-gray-400 mt-0.5">{((1 - evRatio) * 100).toFixed(0)}% Petrol @ ₹{petrolRate.toFixed(2)}/km</div>
+          <div className="bg-[#FAF7EF] border border-[#E8DFC9] rounded-xl p-2.5">
+            <div className="text-[10px] text-[#7A7168] uppercase font-semibold">Petrol Fleet Cost</div>
+            <div className="text-sm font-bold text-[#261B14] tabular-nums mt-0.5">{formatRupeesRaw(petrolDaily * (1 - evRatio))}/day</div>
+            <div className="text-[10px] text-[#A89F91] mt-0.5">{((1 - evRatio) * 100).toFixed(0)}% Petrol @ ₹{petrolRate.toFixed(2)}/km</div>
           </div>
-          <div className="bg-emerald-50 border border-emerald-200 rounded-md p-2">
-            <div className="text-[10px] text-emerald-700 uppercase font-medium">EV Fleet Cost</div>
-            <div className="text-sm font-semibold text-emerald-700 tabular-nums mt-0.5">{formatRupeesRaw(evDaily * evRatio)}/day</div>
+          <div className="bg-[#F0FDF4] border border-[#BBF7D0] rounded-xl p-2.5">
+            <div className="text-[10px] text-emerald-700 uppercase font-semibold">EV Fleet Cost</div>
+            <div className="text-sm font-bold text-emerald-800 tabular-nums mt-0.5">{formatRupeesRaw(evDaily * evRatio)}/day</div>
             <div className="text-[10px] text-emerald-600 mt-0.5">{evPct.toFixed(0)}% EV @ ₹0.35/km</div>
           </div>
         </div>
 
         {/* Annual savings */}
-        <div className="bg-emerald-50 border border-emerald-200 rounded-md p-2.5 text-center">
-          <div className="text-[10px] font-medium text-emerald-700 uppercase">Annual Fuel Savings</div>
-          <div className="text-lg font-bold text-emerald-700 tabular-nums">
+        <div className="bg-[#F0FDF4] border border-[#BBF7D0] rounded-xl p-2.5 text-center">
+          <div className="text-[10px] font-semibold text-emerald-800 uppercase tracking-wide">Annual Fleet Fuel Savings</div>
+          <div className="text-lg font-extrabold text-emerald-700 tabular-nums font-['Space_Grotesk']">
             {evPct > 0 ? `${formatRupeesRaw(annualSavings)}/yr` : '₹0/yr'}
           </div>
-          <div className="text-[10px] text-emerald-600">
+          <div className="text-[10px] text-emerald-600 font-medium">
             {evPct > 0
               ? `Saving ${formatRupeesRaw(dailyFuelSavings)}/day with ${evPct.toFixed(0)}% EV fleet`
               : `Potential: ${formatRupeesRaw(maxPotentialAnnualSavings)}/yr with 100% EV`}
@@ -152,10 +174,11 @@ export const NetworkOperationsPanel: React.FC<NetworkOperationsPanelProps> = Rea
         </div>
 
         {/* CO2 */}
-        <div className="space-y-1 text-xs border-t border-gray-100 pt-2">
+        <div className="space-y-1 text-xs border-t border-[#F3EFE6] pt-2">
           <MetricRow
             label="CO₂ Eliminated"
             value={evPct > 0 ? `${formatNumber(co2Avoided)} tons/yr` : `0 tons/yr (Potential: ${formatNumber(baselineCo2Tons)} tons/yr)`}
+            valueColor="#047857"
           />
           <MetricRow
             label={evPct > 0 ? 'Remaining Emissions' : 'Baseline Emissions'}
@@ -165,8 +188,8 @@ export const NetworkOperationsPanel: React.FC<NetworkOperationsPanelProps> = Rea
       </div>
 
       {/* Facility Rent */}
-      <div className="space-y-1 border-t border-gray-100 pt-3">
-        <h3 className="text-xs font-semibold text-gray-700 mb-1.5">Facility Costs</h3>
+      <div className="space-y-1 border-t border-[#F3EFE6] pt-3">
+        <h3 className="text-xs font-bold text-[#261B14] mb-1.5">Facility Costs</h3>
         <MetricRow label="Monthly Rent" value={formatRupeesRaw(monthlyRent)} />
         <MetricRow label="Annual Rent" value={formatRupeesRaw(annualRent)} />
         {budgetUtilization !== null && (
@@ -179,8 +202,8 @@ export const NetworkOperationsPanel: React.FC<NetworkOperationsPanelProps> = Rea
       </div>
 
       {/* Workforce */}
-      <div className="space-y-1 border-t border-gray-100 pt-3">
-        <h3 className="text-xs font-semibold text-gray-700 mb-1.5">Delivery Workforce</h3>
+      <div className="space-y-1 border-t border-[#F3EFE6] pt-3">
+        <h3 className="text-xs font-bold text-[#261B14] mb-1.5">Delivery Workforce</h3>
         <MetricRow label="Total Drivers" value={`${formatNumber(totalEmployees)}`} />
         <MetricRow label="Daily Wages (₹1,000/d)" value={formatRupeesRaw(dailyWages)} />
         <MetricRow label="Monthly Payroll" value={formatRupeesRaw(monthlyPayroll)} />
@@ -188,12 +211,12 @@ export const NetworkOperationsPanel: React.FC<NetworkOperationsPanelProps> = Rea
       </div>
 
       {/* Total */}
-      <div className="border-t-2 border-gray-200 pt-2 flex justify-between items-center text-sm font-semibold">
+      <div className="border-t-2 border-[#E8DFC9] pt-2.5 flex justify-between items-center text-sm font-bold">
         <div>
-          <span className="text-gray-900 block">Total Annual Cost</span>
-          <span className="text-[10px] text-gray-400 font-normal">Facility Rent + Fleet Fuel</span>
+          <span className="text-[#261B14] block">Total Logistics Cost</span>
+          <span className="text-[10px] text-[#7A7168] font-normal">Facility Rent + Fleet Fuel</span>
         </div>
-        <span className="text-emerald-700 tabular-nums">{formatRupeesRaw(totalAnnualCost)}/yr</span>
+        <span className="text-[#9E471A] tabular-nums font-['Space_Grotesk'] text-base">{formatRupeesRaw(totalAnnualCost)}/yr</span>
       </div>
     </div>
   );
@@ -210,8 +233,8 @@ function MetricRow({
 }) {
   return (
     <div className="flex justify-between items-center py-0.5 text-xs">
-      <span className="text-gray-500">{label}</span>
-      <span className="font-medium tabular-nums" style={valueColor ? { color: valueColor } : undefined}>
+      <span className="text-[#7A7168]">{label}</span>
+      <span className="font-semibold tabular-nums text-[#261B14]" style={valueColor ? { color: valueColor } : undefined}>
         {value}
       </span>
     </div>

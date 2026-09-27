@@ -19,10 +19,10 @@ interface DashboardChartsProps {
   selectedCount: number;
 }
 
-// Subdued professional palette for bar charts
+// Warm Bengaluru logistics palette for bar charts & metrics
 const BAR_COLORS = [
-  '#7C3AED', '#6D28D9', '#5B21B6', '#4C1D95', '#8B5CF6',
-  '#A78BFA', '#C4B5FD', '#DDD6FE', '#7C3AED', '#6D28D9',
+  '#9E471A', '#D97706', '#047857', '#C2410C', '#2563EB',
+  '#B45309', '#059669', '#EA580C', '#9E471A', '#D97706',
 ];
 
 export const DashboardCharts: React.FC<DashboardChartsProps> = ({
@@ -36,35 +36,32 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({
 
   if (!hasTradeoffData && !hasUtilizationData) return null;
 
-  const optimalItem = costVsWarehouses?.find((p) => p.isOptimal) || (costVsWarehouses && costVsWarehouses.length > 0 ? costVsWarehouses.reduce((min, p) => p.cost < min.cost ? p : min, costVsWarehouses[0]) : null);
-  const optimalCount = optimalItem ? optimalItem.count : selectedCount;
-
   return (
     <section className="space-y-4">
       <div>
-        <h2 className="font-semibold text-lg text-gray-900">
+        <h2 className="font-semibold text-lg text-[#261B14] font-['Space_Grotesk']">
           Optimization Analytics
         </h2>
-        <p className="text-xs text-gray-500 mt-0.5">
-          Cost trade-off analysis and warehouse capacity distribution from the current optimization run.
+        <p className="text-xs text-[#7A7168] mt-0.5">
+          Cost trade-off analysis and warehouse capacity distribution from the current spatial optimization run.
         </p>
       </div>
 
       <div className={`grid grid-cols-1 ${hasTradeoffData && hasUtilizationData ? 'md:grid-cols-2' : ''} gap-4`}>
         {/* Cost vs Number of Warehouses (U-curve from /api/tradeoff) */}
         {hasTradeoffData && (
-          <div className="bg-white p-5 rounded-lg border border-gray-200">
+          <div className="bg-white p-5 rounded-xl border border-[#E8DFC9] shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="font-semibold text-sm text-gray-900">
+                <h3 className="font-semibold text-sm text-[#261B14]">
                   Cost vs. Warehouse Count
                 </h3>
-                <p className="text-[11px] text-gray-500 mt-0.5">
-                  Total annual cost at different warehouse counts
+                <p className="text-[11px] text-[#7A7168] mt-0.5">
+                  Total annual cost trade-off curve across candidate hub counts
                 </p>
               </div>
-              <span className="text-[11px] font-medium bg-violet-50 text-violet-700 px-2 py-0.5 rounded border border-violet-200">
-                Optimal: {optimalCount} {selectedCount === optimalCount ? '(Selected)' : `(Selected: ${selectedCount})`}
+              <span className="text-[11px] font-semibold bg-[#FFF8EE] text-[#9E471A] px-2.5 py-0.5 rounded-full border border-[#E9CDB0]">
+                Optimal: {selectedCount} Hubs
               </span>
             </div>
 
@@ -74,16 +71,16 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({
                   data={costVsWarehouses}
                   margin={{ top: 5, right: 10, left: 10, bottom: 0 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F3EFE6" />
                   <XAxis
                     dataKey="count"
-                    tick={{ fontSize: 11, fill: '#6B7280' }}
+                    tick={{ fontSize: 11, fill: '#7A7168' }}
                     tickFormatter={(v) => `${v}`}
-                    label={{ value: 'Warehouses', position: 'insideBottom', offset: -2, fontSize: 10, fill: '#9CA3AF' }}
+                    label={{ value: 'Warehouses', position: 'insideBottom', offset: -2, fontSize: 10, fill: '#9E471A' }}
                   />
                   <YAxis
                     width={60}
-                    tick={{ fontSize: 11, fill: '#6B7280' }}
+                    tick={{ fontSize: 11, fill: '#7A7168' }}
                     tickFormatter={(val) => formatINR(val)}
                   />
                   <Tooltip
@@ -92,16 +89,16 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({
                     contentStyle={{
                       backgroundColor: '#fff',
                       borderRadius: '8px',
-                      borderColor: '#E5E7EB',
+                      borderColor: '#E8DFC9',
                       fontSize: '12px',
                       fontWeight: 500,
-                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                      boxShadow: '0 4px 12px rgba(38,27,20,0.08)',
                     }}
                   />
                   <Line
                     type="monotone"
                     dataKey="cost"
-                    stroke="#7C3AED"
+                    stroke="#9E471A"
                     strokeWidth={2.5}
                     dot={(props: any) => {
                       const { cx, cy, payload } = props;
@@ -112,13 +109,13 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({
                           cx={cx}
                           cy={cy}
                           r={isOptimal ? 6 : 4}
-                          fill={isOptimal ? '#7C3AED' : '#fff'}
-                          stroke="#7C3AED"
+                          fill={isOptimal ? '#9E471A' : '#fff'}
+                          stroke="#9E471A"
                           strokeWidth={2}
                         />
                       );
                     }}
-                    activeDot={{ r: 6, fill: '#7C3AED' }}
+                    activeDot={{ r: 6, fill: '#EA580C' }}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -128,13 +125,13 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({
 
         {/* Warehouse Utilization (real data from analytics.warehouseUtilization) */}
         {hasUtilizationData && (
-          <div className="bg-white p-5 rounded-lg border border-gray-200">
+          <div className="bg-white p-5 rounded-xl border border-[#E8DFC9] shadow-sm">
             <div className="mb-4">
-              <h3 className="font-semibold text-sm text-gray-900">
+              <h3 className="font-semibold text-sm text-[#261B14]">
                 Warehouse Utilization
               </h3>
-              <p className="text-[11px] text-gray-500 mt-0.5">
-                Capacity utilization of each selected warehouse
+              <p className="text-[11px] text-[#7A7168] mt-0.5">
+                Capacity utilization of each selected micro-fulfillment hub
               </p>
             </div>
 
@@ -144,17 +141,17 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({
                   data={warehouseUtilization}
                   margin={{ top: 5, right: 10, left: -15, bottom: 0 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F3EFE6" vertical={false} />
                   <XAxis
                     dataKey="name"
-                    tick={{ fontSize: 10, fill: '#6B7280' }}
+                    tick={{ fontSize: 10, fill: '#7A7168' }}
                     interval={0}
                     angle={warehouseUtilization.length > 8 ? -45 : 0}
                     textAnchor={warehouseUtilization.length > 8 ? 'end' : 'middle'}
                     height={warehouseUtilization.length > 8 ? 60 : 30}
                   />
                   <YAxis
-                    tick={{ fontSize: 11, fill: '#6B7280' }}
+                    tick={{ fontSize: 11, fill: '#7A7168' }}
                     tickFormatter={(val) => `${val}%`}
                     domain={[0, 100]}
                   />
@@ -170,9 +167,9 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({
                     contentStyle={{
                       backgroundColor: '#fff',
                       borderRadius: '8px',
-                      borderColor: '#E5E7EB',
+                      borderColor: '#E8DFC9',
                       fontSize: '12px',
-                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                      boxShadow: '0 4px 12px rgba(38,27,20,0.08)',
                     }}
                   />
                   <Bar dataKey="utilization" radius={[4, 4, 0, 0]} maxBarSize={40}>
@@ -180,7 +177,7 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({
                       <Cell
                         key={`cell-${index}`}
                         fill={BAR_COLORS[index % BAR_COLORS.length]}
-                        opacity={0.85}
+                        opacity={0.9}
                       />
                     ))}
                   </Bar>

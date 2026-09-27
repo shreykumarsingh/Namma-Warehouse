@@ -10,14 +10,17 @@ export const LogisticsTransitBanner: React.FC = () => {
               <span />
               <span />
             </div>
-            Live Transit
+            Live Dispatch
           </div>
           <div className="lb-pipeline">
-            <strong>City Demand</strong>
+            <strong>198 BBMP Wards</strong>
             <span>→</span>
-            <strong>Micro-Hubs</strong>
+            <strong>Urban Micro-Hubs</strong>
             <span>→</span>
             <span style={{ color: '#047857', fontWeight: 700 }}>Eco Dispatch 🌱</span>
+            <span className="hidden xl:inline text-[#7A7168] text-xs font-medium pl-2 border-l border-[#E8DFC9]">
+              ORR Congestion Index: <strong style={{ color: '#9E471A' }}>0.92</strong>
+            </span>
           </div>
         </div>
 

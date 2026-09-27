@@ -112,9 +112,6 @@ export interface KPIMetrics {
   annualFuelSavings?: number;
   annualCo2SavedTons?: number;
   totalEmployees?: number;
-  dailyDriverWages?: number;
-  monthlyDriverWages?: number;
-  annualDriverWages?: number;
   evFleetPct?: number;
   baseline: {
     totalCostLakhs: number;
@@ -122,7 +119,6 @@ export interface KPIMetrics {
     fuelConsumedLiters: number;
     co2EmissionsTons: number;
     slaCompliancePercent: number;
-    annualDriverWages?: number;
   };
 }
 

@@ -68,9 +68,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: .6rem 2rem;
-  max-width: 1700px;
-  margin: 0 auto;
+  padding: .6rem 1cm;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .brand {
@@ -229,7 +229,9 @@ body {
 .header-row2 {
   background: var(--cream2);
   border-top: 1px solid var(--border);
-  padding: .4rem 2rem;
+  padding: .4rem 1cm;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .header-row2-inner {
@@ -237,9 +239,131 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  max-width: 1700px;
-  margin: 0 auto;
+  width: 100%;
 }
+
+/* ─── HEADER NAV TABS (UNIFIED) ─── */
+.header-nav-tabs {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  flex-wrap: wrap;
+}
+
+.nav-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .35rem .8rem;
+  border-radius: 9px;
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--muted2);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all .18s ease;
+  user-select: none;
+}
+
+.nav-tab-btn:hover:not(.active) {
+  background: #fff;
+  border-color: var(--border);
+  color: var(--brown);
+  box-shadow: 0 1px 2px rgba(0,0,0,.03);
+}
+
+.nav-tab-btn.active {
+  background: #fff;
+  border-color: var(--border3);
+  color: var(--brown2);
+  font-weight: 700;
+  box-shadow: 0 1px 4px rgba(158,71,26,.08);
+}
+
+.nav-tab-icon {
+  display: flex;
+  align-items: center;
+  color: inherit;
+}
+
+.nav-tab-label {
+  line-height: 1;
+}
+
+.nav-tab-badge {
+  padding: .1rem .35rem;
+  border-radius: 4px;
+  font-size: .6rem;
+  font-weight: 700;
+  background: var(--cream3);
+  color: var(--brown2);
+  border: 1px solid var(--border3);
+}
+
+.header-row2-right {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-shrink: 0;
+}
+
+.engine-telemetry-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .3rem .65rem;
+  border-radius: 9999px;
+  background: #fff;
+  border: 1px solid var(--border);
+  font-size: .7rem;
+  font-weight: 600;
+  color: var(--muted2);
+  user-select: none;
+}
+
+.engine-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10B981;
+  box-shadow: 0 0 0 2px rgba(16,185,129,.25);
+  animation: pulse 1.8s infinite;
+}
+
+.modules-drawer-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .35rem .65rem;
+  border-radius: 9px;
+  background: #fff;
+  border: 1px solid var(--border);
+  font-size: .72rem;
+  font-weight: 600;
+  color: var(--brown4);
+  cursor: pointer;
+  transition: all .2s;
+  user-select: none;
+}
+
+.modules-drawer-btn:hover {
+  background: var(--cream3);
+  border-color: #D0BDA0;
+}
+
+.bento-icon-small {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: var(--cream3);
+  border: 1px solid var(--border3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--brown2);
+}
+
 
 .features-trigger {
   display: inline-flex;
@@ -634,26 +758,121 @@ body {
 
 /* ─── HERO BANNER ─── */
 .hero-wrap {
-  width: 90%;
+  width: calc(100% - 2cm);
+  max-width: 100%;
   margin: .75rem auto 0;
+  box-sizing: border-box;
 }
 
 .hero-card {
   position: relative;
   width: 100%;
-  border-radius: 24px;
+  border-radius: 20px;
   overflow: hidden;
   border: 1px solid #DCD3C0;
   background: #0C0A09;
   color: #fff;
-  min-height: 440px;
+  min-height: 280px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 2.5rem;
-  transition: all .5s;
-  cursor: pointer;
+  padding: 1.75rem 2rem;
+  transition: all .4s;
 }
+
+.hero-collapsed-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: .5rem 1rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,.04);
+}
+
+.hero-opt-btn-sm {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .3rem .75rem;
+  border-radius: 7px;
+  background: var(--brown2);
+  color: #fff;
+  font-size: .72rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  transition: all .18s;
+}
+
+.hero-opt-btn-sm:hover:not(:disabled) {
+  background: #863B13;
+}
+
+.hero-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .25rem .6rem;
+  border-radius: 8px;
+  background: rgba(255,255,255,.1);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255,255,255,.2);
+  color: #E2D4BF;
+  cursor: pointer;
+  font-size: .72rem;
+  font-weight: 600;
+  transition: all .2s;
+}
+
+.hero-toggle-btn:hover {
+  background: rgba(255,255,255,.2);
+  color: #fff;
+}
+
+.hero-highlights-row {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+.highlight-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .3rem .7rem;
+  border-radius: 9999px;
+  background: rgba(0,0,0,.5);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,.18);
+  font-size: .72rem;
+  color: #E7E0D8;
+}
+
+.hero-tour-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .6rem 1.15rem;
+  border-radius: 12px;
+  background: rgba(0,0,0,.65);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,.25);
+  color: #FBBF24;
+  font-size: .83rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .2s;
+}
+
+.hero-tour-btn:hover {
+  background: rgba(0,0,0,.85);
+  border-color: #FBBF24;
+}
+
 
 .hero-card:hover {
   border-color: rgba(251,191,36,.7);
@@ -899,7 +1118,9 @@ body {
 /* ─── LOGISTICS BANNER ─── */
 .logistics-banner {
   margin: 1rem auto;
-  width: 90%;
+  width: calc(100% - 2cm);
+  max-width: 100%;
+  box-sizing: border-box;
   border-radius: 16px;
   border: 1px solid var(--border);
   background: var(--cream2);
@@ -1051,9 +1272,9 @@ body {
 
 /* ─── MAIN CONTENT AREA ─── */
 .main-content {
-  padding: 1.5rem 2rem 3rem;
-  max-width: 1700px;
-  margin: 0 auto;
+  padding: 1.25rem 1cm 3rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .page-tabs {

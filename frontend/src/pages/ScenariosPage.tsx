@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GitFork, Zap, CloudRain, AlertTriangle, RefreshCw, ArrowUpRight, ArrowDownRight, CheckCircle2 } from 'lucide-react';
+import { GitFork, Zap, CloudRain, AlertTriangle, RefreshCw, ArrowUpRight, ArrowDownRight, CheckCircle2, XCircle } from 'lucide-react';
 import { OptimizationConfig, OptimizationResult } from '../types';
 import { api } from '../services/api';
 
@@ -67,8 +67,8 @@ export const ScenariosPage: React.FC<ScenariosPageProps> = ({ config, result, on
     },
     {
       id: 'monsoon',
-      title: 'Bengaluru Monsoon Inundation (+50% Fuel Burn)',
-      desc: 'Simulates waterlogging and rerouting overhead during heavy rainfall across low-lying eastern & northern corridors.',
+      title: 'Monsoon Inundation (+50% Fuel Burn)',
+      desc: 'Simulates waterlogging and rerouting overhead during heavy rainfall across low-lying eastern corridors.',
       icon: <CloudRain size={20} color="#2563EB" />,
       badge: 'Weather Disruption',
       badgeColor: 'bg-blue-100 text-blue-800 border-blue-200',
@@ -77,6 +77,33 @@ export const ScenariosPage: React.FC<ScenariosPageProps> = ({ config, result, on
         setActiveScenario('monsoon');
         try {
           const { before, after } = await api.simulateScenario({ type: 'fuel', percentageChange: 50 });
+          setDeltaMetrics({
+            deliveryTimeDelta: Number((after.kpi.avgDeliveryTimeMin - before.kpi.avgDeliveryTimeMin).toFixed(1)),
+            costDelta: Number((after.kpi.totalCostLakhs - before.kpi.totalCostLakhs).toFixed(1)),
+            slaDelta: Number((after.kpi.slaCompliancePercent - before.kpi.slaCompliancePercent).toFixed(1)),
+          });
+          onUpdateResult(after);
+        } finally {
+          setIsSimulating(false);
+        }
+      },
+    },
+    {
+      id: 'outage',
+      title: 'Dark Store / Primary Hub Outage',
+      desc: 'Simulates an unplanned shutdown at an active primary hub, triggering dynamic failover across surviving facilities.',
+      icon: <XCircle size={20} color="#DC2626" />,
+      badge: 'Facility Outage',
+      badgeColor: 'bg-red-100 text-red-800 border-red-200',
+      action: async () => {
+        setIsSimulating(true);
+        setActiveScenario('outage');
+        try {
+          const targetHubId = result.selectedWarehouseIds[0] || 'p405';
+          const { before, after } = await api.simulateScenario({
+            type: 'warehouse_failure',
+            disabledWarehouseId: targetHubId,
+          });
           setDeltaMetrics({
             deliveryTimeDelta: Number((after.kpi.avgDeliveryTimeMin - before.kpi.avgDeliveryTimeMin).toFixed(1)),
             costDelta: Number((after.kpi.totalCostLakhs - before.kpi.totalCostLakhs).toFixed(1)),
@@ -174,7 +201,7 @@ export const ScenariosPage: React.FC<ScenariosPageProps> = ({ config, result, on
       )}
 
       {/* Scenario cards grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
         {scenarios.map((sc) => {
           const isSelected = activeScenario === sc.id;
           return (

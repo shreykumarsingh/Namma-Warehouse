@@ -22,10 +22,10 @@ export const WarehouseResultsGrid: React.FC<WarehouseResultsGridProps> = ({
   return (
     <section className="space-y-4">
       <div>
-        <h2 className="font-semibold text-lg text-gray-900">
+        <h2 className="font-semibold text-lg text-[#261B14] font-['Space_Grotesk']">
           Recommended Warehouse Locations
         </h2>
-        <p className="text-xs text-gray-500 mt-0.5">
+        <p className="text-xs text-[#7A7168] mt-0.5">
           {selected.length} location{selected.length !== 1 ? 's' : ''} selected by the optimization algorithm. Each warehouse serves a cluster of nearby demand nodes.
         </p>
       </div>
@@ -35,21 +35,21 @@ export const WarehouseResultsGrid: React.FC<WarehouseResultsGridProps> = ({
         {selected.map((wh, i) => (
           <div
             key={wh.id}
-            className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow"
+            className="bg-white border border-[#E8DFC9] rounded-xl p-4.5 hover:shadow-md hover:border-[#E9CDB0] transition-all"
           >
             {/* Header */}
-            <div className="flex items-center gap-2.5 pb-3 mb-3 border-b border-gray-100">
+            <div className="flex items-center gap-2.5 pb-3 mb-3 border-b border-[#F3EFE6]">
               <div
-                className="w-8 h-8 rounded-md flex items-center justify-center text-white font-bold text-xs shrink-0"
-                style={{ backgroundColor: wh.color || '#7C3AED' }}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm"
+                style={{ backgroundColor: wh.color || '#9E471A' }}
               >
                 W{i + 1}
               </div>
               <div className="min-w-0">
-                <div className="font-semibold text-sm text-gray-900 truncate">
+                <div className="font-bold text-sm text-[#261B14] truncate">
                   {wh.name}
                 </div>
-                <div className="text-[11px] text-gray-500 truncate">
+                <div className="text-[11px] text-[#7A7168] truncate font-medium">
                   {wh.location}
                 </div>
               </div>
@@ -105,10 +105,10 @@ function Row({
 }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-gray-500">{label}</span>
+      <span className="text-[#7A7168] font-medium">{label}</span>
       <span
-        className={`font-medium tabular-nums ${
-          highlight ? 'text-emerald-700' : 'text-gray-900'
+        className={`font-semibold tabular-nums ${
+          highlight ? 'text-emerald-700' : 'text-[#261B14]'
         }`}
       >
         {value}

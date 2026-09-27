@@ -121,18 +121,19 @@ export function runOptimization(
       const transportCost = fuel * config.fuelPrice + d * 18 * Math.ceil(z.dailyDemand / 45);
       totalTransportCost += transportCost;
 
-      if (t <= config.maxDeliveryTime) {
+      const targetSla = config.targetSlaMinutes || 10.0;
+      if (t <= targetSla) {
         slaHits += z.dailyDemand;
       }
     }
 
     const avgTime = totalOrders > 0 ? totalTimeWeighted / totalOrders : 30;
-    const sla = totalOrders > 0 ? (slaHits / totalOrders) * 100 : 90;
-    const batchSize = config.batchSize || 23;
-    const driversNeeded = Math.ceil(totalOrders / batchSize);
-    const dailyWages = driversNeeded * 1000;
-    const totalCostINR = totalFixedCost + totalTransportCost + dailyWages;
-    const totalCostLakhs = totalCostINR / 100000;
+    const sla = totalOrders > 0 ? (slaHits / totalOrders) * 100 : 15;
+    // Harmonize annual operational cost units (matching Python solver total_annual / 100000)
+    const annualFixed = totalFixedCost * 12;
+    const annualTransport = totalTransportCost * 365;
+    const totalAnnualINR = annualFixed + annualTransport;
+    const totalCostLakhs = totalAnnualINR / 100000;
 
     // Multi-criteria scoring
     let score = 0;
@@ -285,15 +286,18 @@ export function runOptimization(
     }));
 
   // Cost Breakdown Pie Data
-  const totalCost = best.totalCost;
-  const transportFuelShare = Math.round(totalCost * 0.45 * 10) / 10;
-  const leaseShare = Math.round(totalCost * 0.30 * 10) / 10;
-  const wagesShare = Math.round((totalCost - transportFuelShare - leaseShare) * 10) / 10;
+  const transportShare = Math.round(best.totalCost * 0.38 * 10) / 10;
+  const leaseShare = Math.round(best.totalCost * 0.32 * 10) / 10;
+  const laborShare = Math.round(best.totalCost * 0.16 * 10) / 10;
+  const fuelShare = Math.round(best.totalCost * 0.11 * 10) / 10;
+  const otherShare = Math.round((best.totalCost - (transportShare + leaseShare + laborShare + fuelShare)) * 10) / 10;
 
   const costBreakdown = [
-    { name: 'Warehouse Lease', value: leaseShare, color: '#78350F', percentage: 30 },
-    { name: 'Transportation & Fuel', value: transportFuelShare, color: '#DC2626', percentage: 45 },
-    { name: 'Driver Wages', value: Math.max(0.1, wagesShare), color: '#2563EB', percentage: 25 },
+    { name: 'Transportation', value: transportShare, color: '#D97706', percentage: 38 },
+    { name: 'Warehouse Lease', value: leaseShare, color: '#78350F', percentage: 32 },
+    { name: 'Labour & Staging', value: laborShare, color: '#15803D', percentage: 16 },
+    { name: 'Fuel', value: fuelShare, color: '#DC2626', percentage: 11 },
+    { name: 'Maintenance & IT', value: Math.max(0.1, otherShare), color: '#6B7280', percentage: 3 },
   ];
 
   // Delivery Time Distribution Histogram
@@ -328,18 +332,31 @@ export function runOptimization(
         .reduce((sum, r) => sum + r.fuelLiters, 0);
       return {
         name: w.id + ' - ' + w.name.split(' ')[0],
-        co2: Number(((wFuel * 2.31) / 1000).toFixed(2)),
+        co2: Number(((wFuel * 2.68) / 1000).toFixed(2)),
         fuel: Math.round(wFuel),
       };
     });
 
-  // Baseline comparison (unoptimized network with arbitrary single central hub)
-  const baselineSet = evaluateSet([availableCandidates[0]?.id || candidateWarehouses[0].id]);
-  const baselineCost = Number(baselineSet.totalCost.toFixed(1));
-  const baselineTime = Number(baselineSet.avgTime.toFixed(1));
-  const baselineFuel = Math.round(baselineSet.totalFuel);
-  const baselineCO2 = Number(baselineSet.totalCO2.toFixed(1));
-  const baselineSLA = Number(baselineSet.sla.toFixed(1));
+  // Compute REAL unoptimized baseline: Single central legacy warehouse (p=1)
+  const baselineEval = evaluateSet([availableCandidates[0].id]);
+  const baselineCost = Number(baselineEval.totalCost.toFixed(1));
+  const baselineTime = Number(baselineEval.avgTime.toFixed(1));
+  const baselineFuel = Math.round(baselineEval.totalFuel);
+  const baselineCO2 = Number(baselineEval.totalCO2.toFixed(1));
+  const baselineSLA = Number(baselineEval.sla.toFixed(1));
+
+  const evRatio = Math.max(0, Math.min(1, (config.evFleetPct ?? config.evShare ?? 0) / 100));
+  const estimatedDailyFleetKm = Math.round(best.totalFuel * 35.0);
+  const dailyPetrolCost = Math.round(estimatedDailyFleetKm * (config.petrolCostPerKm || 2.0));
+  const dailyEvCost = Math.round(estimatedDailyFleetKm * 0.35);
+  const dailyFuelSavings = Math.round((dailyPetrolCost - dailyEvCost) * evRatio);
+  const annualFuelSavings = dailyFuelSavings * 365;
+  const totalOrders = scaledZones.reduce((sum, z) => sum + (z.dailyDemand || 0), 0);
+  const totalFixedCost = candidateWarehouses
+    .filter((w) => selectedWarehouseIds.includes(w.id))
+    .reduce((sum, w) => sum + (w.operatingCost || 0), 0);
+  const totalEmployees = Math.max(1, Math.round(totalOrders / (config.batchSize || 23)));
+  const dailyWages = totalEmployees * 1000;
 
   const kpi: KPIMetrics = {
     optimalWarehouses: selectedWarehouseIds.length,
@@ -348,6 +365,13 @@ export function runOptimization(
     fuelConsumedLiters: best.totalFuel,
     co2EmissionsTons: best.totalCO2,
     slaCompliancePercent: best.sla,
+    dailyPetrolCost,
+    dailyEvCost,
+    dailyFuelSavings,
+    annualFuelSavings,
+    annualCo2SavedTons: Number((best.totalCO2 * evRatio).toFixed(1)),
+    totalEmployees,
+    evFleetPct: Math.round(evRatio * 100),
     baseline: {
       totalCostLakhs: baselineCost,
       avgDeliveryTimeMin: baselineTime,
@@ -355,6 +379,28 @@ export function runOptimization(
       co2EmissionsTons: baselineCO2,
       slaCompliancePercent: baselineSLA,
     },
+  };
+
+  const costs = {
+    daily_fleet_km: estimatedDailyFleetKm,
+    daily_fuel: Math.round(dailyPetrolCost * (1 - evRatio) + dailyEvCost * evRatio),
+    annual_fuel: Math.round((dailyPetrolCost * (1 - evRatio) + dailyEvCost * evRatio) * 365),
+    daily_petrol_cost: dailyPetrolCost,
+    daily_ev_cost: dailyEvCost,
+    daily_fuel_savings: dailyFuelSavings,
+    annual_fuel_savings: annualFuelSavings,
+    annual_co2_saved_tons: Number((best.totalCO2 * evRatio).toFixed(1)),
+    annual_co2_tons: Number((best.totalCO2 * (1 - evRatio)).toFixed(1)),
+    monthly_rent: Math.round(totalFixedCost),
+    annual_rent: Math.round(totalFixedCost * 12),
+    total_annual: Math.round(best.totalCost * 100000),
+    total_employees: totalEmployees,
+    daily_driver_wages: dailyWages,
+    monthly_driver_wages: dailyWages * 30,
+    avg_delivery_time_min: best.avgTime,
+    sla_compliance_pct: best.sla,
+    target_sla_minutes: config.targetSlaMinutes || 10.0,
+    ev_fleet_pct: Math.round(evRatio * 100),
   };
 
   const endTime = performance.now();
@@ -373,7 +419,8 @@ export function runOptimization(
       deliveryTimeDistribution,
       co2ByWarehouse,
     },
-    summaryMessage: `${selectedWarehouseIds.length} warehouses selected • ${best.avgTime} min avg delivery • ₹${best.totalCost.toFixed(1)} L/day estimated cost`,
+    summaryMessage: `${selectedWarehouseIds.length} warehouses selected • ${best.avgTime} min avg delivery • ₹${best.totalCost.toFixed(1)} L/yr cost • ${best.sla.toFixed(1)}% 10-min SLA`,
     executionTimeMs: Math.round(endTime - startTime),
+    costs,
   };
 }

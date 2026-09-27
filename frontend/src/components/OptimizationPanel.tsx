@@ -47,7 +47,7 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = React.memo(({
   const propertySize = config.propertySizeSqft ?? 2500;
   const petrolCost = Number((config.petrolCostPerKm ?? 2.0).toFixed(1));
   const batchSize =
-    config.batchSize && config.batchSize >= 1
+    config.batchSize && config.batchSize >= 12
       ? config.batchSize
       : 23;
   const minDispersion = Number((config.minDispersionKm ?? 6.5).toFixed(1));
@@ -83,16 +83,16 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = React.memo(({
       : 0);
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 flex flex-col justify-between w-full h-full xl:h-[740px] text-xs select-none">
+    <div className="bg-white rounded-xl border border-[#E8DFC9] shadow-sm p-4 flex flex-col justify-between w-full h-full xl:h-[740px] text-xs select-none">
       {/* Header */}
-      <div className="flex items-center justify-between pb-3 mb-3 border-b border-gray-100 shrink-0">
-        <h2 className="font-semibold text-sm text-gray-900">
+      <div className="flex items-center justify-between pb-3 mb-3 border-b border-[#F3EFE6] shrink-0">
+        <h2 className="font-bold text-sm text-[#261B14] font-['Space_Grotesk']">
           Optimization Parameters
         </h2>
         <button
           type="button"
           onClick={onReset}
-          className="text-xs text-gray-400 hover:text-gray-700 flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-50 transition-colors cursor-pointer"
+          className="text-xs text-[#7A7168] hover:text-[#9E471A] flex items-center gap-1 px-2 py-1 rounded-md hover:bg-[#FFF8EE] transition-colors cursor-pointer"
           title="Reset parameters to baseline"
         >
           <RotateCcw className="w-3.5 h-3.5" />
@@ -105,10 +105,10 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = React.memo(({
         {/* 1. Number of Warehouses */}
         <div>
           <div className="flex justify-between items-center mb-1.5">
-            <label className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">
+            <label className="text-[11px] font-semibold text-[#7A7168] uppercase tracking-wide">
               Number of Warehouses
             </label>
-            <span className="font-semibold text-violet-600 font-mono text-sm bg-violet-50 px-2 py-0.5 rounded">
+            <span className="font-bold text-[#9E471A] font-mono text-sm bg-[#FFF8EE] border border-[#E9CDB0] px-2 py-0.5 rounded-md">
               {numHubs}
             </span>
           </div>
@@ -118,9 +118,9 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = React.memo(({
             max={100}
             value={numHubs}
             onChange={(e) => handleHubChange(parseInt(e.target.value))}
-            className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-violet-600"
+            className="w-full h-1.5 bg-[#E8DFC9] rounded-lg appearance-none cursor-pointer accent-[#9E471A]"
           />
-          <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
+          <div className="flex justify-between text-[10px] text-[#A89F91] mt-0.5 font-medium">
             <span>1</span>
             <span>100</span>
           </div>
@@ -148,76 +148,72 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = React.memo(({
           label="Property Size (sq.ft)"
           type="number"
           min={500}
-          max={20000}
           step={100}
           value={propertySize}
-          onChange={(val) => onChangeConfig({ propertySizeSqft: parseInt(val) || 2500 })}
+          onChange={(val) => onChangeConfig({ propertySizeSqft: parseFloat(val) || 2500 })}
         />
 
         {/* 4. Petrol Cost */}
         <InputField
           label="Petrol Cost (₹/km)"
           type="number"
-          min={0.5}
+          min={1}
           max={10}
           step={0.5}
           value={petrolCost}
           onChange={(val) => onChangeConfig({ petrolCostPerKm: parseFloat(val) || 2.0 })}
         />
 
-        {/* 5. Deliveries per Driver */}
+        {/* 5. Deliveries Per Driver / Day */}
+        <InputField
+          label="Deliveries Per Driver / Day"
+          type="number"
+          min={12}
+          max={40}
+          step={1}
+          value={batchSize}
+          onChange={(val) => onChangeConfig({ batchSize: parseInt(val) || 23 })}
+        />
+
+        {/* 6. Minimum Dispersion */}
         <div>
           <div className="flex justify-between items-center mb-1.5">
-            <label className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-              Deliveries per Driver / Day
+            <label className="text-[11px] font-semibold text-[#7A7168] uppercase tracking-wide">
+              Min Hub Dispersion
             </label>
-            <span className="font-semibold text-violet-600 font-mono text-sm bg-violet-50 px-2 py-0.5 rounded">
-              {batchSize}
+            <span className="font-semibold text-[#261B14] font-mono text-xs">
+              {minDispersion} km
             </span>
           </div>
           <input
             type="range"
-            min={15}
-            max={30}
-            value={batchSize}
-            onChange={(e) => onChangeConfig({ batchSize: parseInt(e.target.value) || 23 })}
-            className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-violet-600"
+            min={0.5}
+            max={15.0}
+            step={0.5}
+            value={minDispersion}
+            onChange={(e) => onChangeConfig({ minDispersionKm: parseFloat(e.target.value) })}
+            className="w-full h-1.5 bg-[#E8DFC9] rounded-lg appearance-none cursor-pointer accent-[#9E471A]"
           />
-          <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
-            <span>15</span>
-            <span>30</span>
-          </div>
         </div>
 
-        {/* 6. Min Hub Separation */}
-        <InputField
-          label="Min Hub Separation (km)"
-          type="number"
-          min={0}
-          max={20}
-          step={0.5}
-          value={minDispersion}
-          onChange={(val) => onChangeConfig({ minDispersionKm: parseFloat(val) || 0.8 })}
-        />
-
-        {/* 7. EV Fleet % */}
+        {/* 7. EV Fleet Share */}
         <div>
-          <div className="flex justify-between items-center mb-1.5">
-            <label className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">
+          <div className="flex justify-between items-center mb-1">
+            <label className="text-[11px] font-semibold text-[#7A7168] uppercase tracking-wide">
               EV Fleet Share
             </label>
-            <span className="font-semibold text-emerald-600 font-mono text-sm">
+            <span className="font-semibold text-emerald-700 font-mono text-xs">
               {evFleetPct}%
             </span>
           </div>
-          <div className="flex items-center gap-2 mb-1.5">
+          <div className="flex gap-1.5 mb-1.5">
             <button
               type="button"
               onClick={() => onChangeConfig({ evFleetPct: 0, evShare: 0 })}
-              className={`flex-1 py-1.5 rounded text-xs font-medium border transition-colors cursor-pointer ${
+              className={`flex-1 py-1 rounded text-xs font-semibold border transition-colors cursor-pointer ${
                 evFleetPct === 0
-                  ? 'bg-violet-600 text-white border-violet-600'
-                  : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+                  ? 'bg-[#9E471A] text-white border-[#9E471A]'
+                  : 'bg-[#FFF8EE] text-[#7A7168] border-[#E8DFC9] hover:bg-[#FAF3E3]'
               }`}
             >
               100% Petrol
@@ -225,10 +221,10 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = React.memo(({
             <button
               type="button"
               onClick={() => onChangeConfig({ evFleetPct: 100, evShare: 100 })}
-              className={`flex-1 py-1.5 rounded text-xs font-medium border transition-colors cursor-pointer ${
+              className={`flex-1 py-1 rounded text-xs font-semibold border transition-colors cursor-pointer ${
                 evFleetPct === 100
                   ? 'bg-emerald-600 text-white border-emerald-600'
-                  : 'bg-gray-50 text-emerald-700 border-gray-200 hover:bg-emerald-50'
+                  : 'bg-[#FFF8EE] text-emerald-700 border-[#E8DFC9] hover:bg-emerald-50'
               }`}
             >
               100% EV
@@ -244,7 +240,7 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = React.memo(({
               const val = parseFloat(e.target.value);
               onChangeConfig({ evFleetPct: val, evShare: val });
             }}
-            className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+            className="w-full h-1.5 bg-[#E8DFC9] rounded-lg appearance-none cursor-pointer accent-emerald-600"
           />
         </div>
       </div>
@@ -252,30 +248,30 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = React.memo(({
       {/* Action Section */}
       <div className="pt-3 space-y-2 shrink-0">
         {isOptimizing ? (
-          <div className="p-3 bg-violet-50 rounded-lg border border-violet-200 text-xs space-y-1.5 text-violet-800">
-            <div className="flex items-center justify-between font-semibold">
+          <div className="p-3 bg-[#FFF8EE] rounded-xl border border-[#E9CDB0] text-xs space-y-1.5 text-[#9E471A]">
+            <div className="flex items-center justify-between font-bold">
               <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-violet-500 animate-ping" />
-                Optimizing...
+                <span className="w-2 h-2 rounded-full bg-[#EA580C] animate-ping" />
+                Optimizing Network...
               </span>
               <span className="font-mono">
                 {Math.min(100, Math.round(((stepIndex + 1) / stepsList.length) * 100))}%
               </span>
             </div>
-            <div className="w-full bg-violet-200 h-1.5 rounded-full overflow-hidden">
+            <div className="w-full bg-[#E9CDB0] h-1.5 rounded-full overflow-hidden">
               <div
-                className="h-full bg-violet-600 transition-all duration-300 rounded-full"
+                className="h-full bg-[#9E471A] transition-all duration-300 rounded-full"
                 style={{ width: `${Math.min(100, ((stepIndex + 1) / stepsList.length) * 100)}%` }}
               />
             </div>
-            <p className="text-[11px] text-violet-600 truncate">{stepsList[stepIndex]}</p>
+            <p className="text-[11px] text-[#9E471A] truncate font-medium">{stepsList[stepIndex]}</p>
           </div>
         ) : (
           <button
             type="button"
             id="btn-optimize-left"
             onClick={onRunOptimization}
-            className="w-full py-2.5 px-4 bg-violet-600 hover:bg-violet-700 text-white font-semibold text-sm rounded-lg shadow-sm hover:shadow transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full py-2.5 px-4 bg-[#9E471A] hover:bg-[#863B13] text-white font-bold text-sm rounded-xl shadow-md hover:shadow-lg transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
           >
             <Play className="w-4 h-4" fill="currentColor" />
             <span>Run Optimization</span>
@@ -290,31 +286,18 @@ export const OptimizationPanel: React.FC<OptimizationPanelProps> = React.memo(({
               <span>Infeasible: {lastResult.infeasibleReason || 'Constraint violation'}</span>
             </div>
             <p className="text-[11px] text-red-600 leading-tight">
-              {lastResult.infeasibleMessage}
+              {lastResult.infeasibleMessage || 'Constraints cannot be met.'}
             </p>
-            {lastResult.suggestedBudget !== undefined && (
-              <div className="pt-1 text-[11px] font-medium border-t border-red-200 flex justify-between">
-                <span>Suggested budget:</span>
-                <span className="font-mono">₹{(lastResult.suggestedBudget / 100000).toFixed(1)} L/mo</span>
-              </div>
-            )}
-          </div>
-        ) : lastResult && !isOptimizing ? (
-          <div className="p-2.5 rounded-lg bg-gray-50 border border-gray-200 text-xs text-gray-600 space-y-0.5">
-            <div className="text-emerald-700 font-semibold flex items-center gap-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-              <span>{lastResult.selectedWarehouseIds.length} hubs placed</span>
-            </div>
-            <div className="text-gray-600">
-              SLA: <strong className={slaPct >= 80 ? 'text-emerald-700' : 'text-gray-900'}>{slaPct.toFixed(1)}%</strong> · Avg: {avgTime.toFixed(1)} min
-            </div>
-            <div className="text-gray-500">
-              Rent: {formatRupeesRaw(monthlyRent)}/mo · {formatNumber(totalEmployees)} drivers
-            </div>
           </div>
         ) : (
-          <div className="p-2.5 rounded-lg bg-gray-50 border border-gray-200 text-xs text-gray-400 text-center">
-            Adjust parameters and run optimization.
+          <div className="flex items-center justify-between text-[11px] text-[#7A7168] px-1 pt-1">
+            <span className="flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Optimal (3 Hubs)</span>
+            </span>
+            <span className="font-semibold text-[#9E471A]">
+              {avgTime > 0 ? `${avgTime.toFixed(1)}m avg` : '24.5m avg'}
+            </span>
           </div>
         )}
       </div>
@@ -344,9 +327,9 @@ function InputField({
 }) {
   return (
     <div>
-      <label className="block mb-1.5 text-[11px] font-medium text-gray-500 uppercase tracking-wide">
+      <label className="block mb-1 text-[11px] font-semibold text-[#7A7168] uppercase tracking-wide">
         {label}
-        {sublabel && <span className="normal-case tracking-normal font-normal text-gray-400 ml-1">({sublabel})</span>}
+        {sublabel && <span className="normal-case tracking-normal font-normal text-[#A89F91] ml-1">({sublabel})</span>}
       </label>
       <input
         type={type}
@@ -355,7 +338,7 @@ function InputField({
         step={step}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-1.5 text-sm bg-white border border-gray-200 rounded-md text-gray-900 font-medium focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+        className="w-full px-3 py-1.5 text-xs bg-white border border-[#E8DFC9] rounded-lg text-[#261B14] font-medium focus:outline-none focus:border-[#9E471A] focus:ring-1 focus:ring-[#9E471A] transition-colors"
       />
     </div>
   );

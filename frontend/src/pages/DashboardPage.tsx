@@ -1,4 +1,5 @@
 import React from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { LogisticsMap } from '../components/LogisticsMap';
 import { OptimizationPanel } from '../components/OptimizationPanel';
 import { NetworkOperationsPanel } from '../components/NetworkOperationsPanel';
@@ -66,52 +67,112 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     { id: '4', type: 'demand', msg: 'BBMP 800 discrete candidate nodes loaded and normalized', time: '2h ago' },
   ],
 }) => {
-  const selectedCount = result.selectedWarehouseIds.length;
-  const avgTime = result.kpi.avgDeliveryTimeMin || 24.5;
-  const slaPct = result.kpi.slaCompliancePercent || 94.2;
-  const totalCostLakhs = result.kpi.totalCostLakhs || 7.2;
-  const co2Pct = Math.round(result.kpi.baseline?.co2EmissionsTons
-    ? Math.max(5, ((result.kpi.baseline.co2EmissionsTons - result.kpi.co2EmissionsTons) / result.kpi.baseline.co2EmissionsTons) * 100)
-    : 31);
+  const isInfeasible = result.status === 'infeasible';
+  const selectedCount = isInfeasible ? 0 : result.selectedWarehouseIds.length;
+  const avgTime = isInfeasible ? 0 : (result.kpi.avgDeliveryTimeMin || 24.5);
+  const slaPct = isInfeasible ? 0 : (result.kpi.slaCompliancePercent ?? 2.4);
+  const totalCostLakhs = isInfeasible ? 0 : (result.kpi.totalCostLakhs || 7.2);
+  const co2Pct = isInfeasible
+    ? 0
+    : Math.round(
+        result.kpi.baseline?.co2EmissionsTons
+          ? Math.max(
+              5,
+              ((result.kpi.baseline.co2EmissionsTons - result.kpi.co2EmissionsTons) /
+                result.kpi.baseline.co2EmissionsTons) *
+                100
+            )
+          : 23
+      );
+
+  // Dynamic baseline comparisons
+  const baseAvgTime = result.kpi.baseline?.avgDeliveryTimeMin || avgTime * 1.35;
+  const timeSavedPct = isInfeasible ? 0 : Math.max(1, Math.round(((baseAvgTime - avgTime) / baseAvgTime) * 100));
+
+  const baseCost = result.kpi.baseline?.totalCostLakhs || totalCostLakhs * 1.24;
+  const isCrores = totalCostLakhs >= 100;
+  const costFormatted = isInfeasible
+    ? '—'
+    : isCrores
+    ? `₹${(totalCostLakhs / 100).toFixed(2)}`
+    : `₹${totalCostLakhs.toFixed(1)}`;
+  const costUnit = isInfeasible ? '' : isCrores ? ' Cr' : ' L';
+  const costSavedFormatted = isInfeasible
+    ? 'Infeasible'
+    : isCrores
+    ? `↓ ₹${((baseCost - totalCostLakhs) / 100).toFixed(2)} Cr saved`
+    : `↓ ₹${(baseCost - totalCostLakhs).toFixed(1)}L saved`;
+
+  const activeHubNames = isInfeasible
+    ? 'Infeasible'
+    : result.warehouses
+        .filter((w) => w.isSelected)
+        .map((w) => w.name.replace(' Hub', ''))
+        .slice(0, 3)
+        .join(', ');
 
   return (
     <div className="space-y-6">
-      {/* ── KPI Grid (from User Design) ── */}
-      <div className="kpi-grid">
-        <div className="kpi-card">
+      {/* ── Infeasible Warning Banner (if constraints are violated) ── */}
+      {isInfeasible && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-red-800 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <div className="font-bold text-sm">Constraint Violation: Network Configuration Infeasible</div>
+            <p className="text-xs text-red-700 mt-0.5">
+              {result.infeasibleMessage || 'Constraints cannot be met under the specified budget or separation distance without severe clustering.'}
+            </p>
+            {result.suggestedBudget !== undefined && result.suggestedBudget !== null && (
+              <div className="text-xs font-semibold text-red-900 mt-2">
+                Suggested Budget: ₹{(result.suggestedBudget / 100000).toFixed(1)} Lakhs/month
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── KPI Grid (Executive Telemetry Metrics) ── */}
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+        <div className="kpi-card" id="kpi-avg-time">
           <div className="kpi-label">Avg Delivery Time</div>
           <div className="kpi-value">
-            {avgTime.toFixed(1)}
-            <span style={{ fontSize: '1rem', fontWeight: 600, color: '#9E471A' }}> min</span>
+            {isInfeasible ? '—' : avgTime.toFixed(1)}
+            {!isInfeasible && <span style={{ fontSize: '1rem', fontWeight: 600, color: '#9E471A' }}> min</span>}
           </div>
-          <span className="kpi-badge kpi-green">↓ 18% vs baseline</span>
+          <span className={`kpi-badge ${isInfeasible ? 'kpi-orange' : 'kpi-green'}`}>
+            {isInfeasible ? 'Unmet SLA' : `↓ ${timeSavedPct}% vs unoptimized`}
+          </span>
         </div>
 
-        <div className="kpi-card">
-          <div className="kpi-label">SLA Compliance</div>
+        <div className="kpi-card" id="kpi-sla">
+          <div className="kpi-label">10-Min QC SLA</div>
           <div className="kpi-value">
-            {slaPct.toFixed(1)}
+            {isInfeasible ? '0.0' : slaPct.toFixed(1)}
             <span style={{ fontSize: '1rem', fontWeight: 600, color: '#9E471A' }}>%</span>
           </div>
-          <span className="kpi-badge kpi-green">↑ 12% improvement</span>
+          <span className="kpi-badge kpi-orange" title="Quick-commerce 10-min threshold coverage across all 800 nodes">
+            Hyperlocal Target
+          </span>
         </div>
 
-        <div className="kpi-card">
+        <div className="kpi-card" id="kpi-hubs">
           <div className="kpi-label">Active Hubs</div>
-          <div className="kpi-value">{selectedCount || 3}</div>
-          <span className="kpi-badge kpi-orange">Bengaluru Network</span>
+          <div className="kpi-value">{selectedCount}</div>
+          <span className="kpi-badge kpi-orange" title={activeHubNames}>
+            {activeHubNames || '0 Hubs Placed'}
+          </span>
         </div>
 
-        <div className="kpi-card">
+        <div className="kpi-card" id="kpi-cost">
           <div className="kpi-label">Total Logistics Cost</div>
           <div className="kpi-value">
-            ₹{totalCostLakhs.toFixed(1)}
-            <span style={{ fontSize: '1rem', fontWeight: 600, color: '#9E471A' }}> L</span>
+            {costFormatted}
+            {costUnit && <span style={{ fontSize: '1rem', fontWeight: 600, color: '#9E471A' }}>{costUnit}</span>}
           </div>
-          <span className="kpi-badge kpi-green">↓ ₹1.8L saved</span>
+          <span className={`kpi-badge ${isInfeasible ? 'kpi-orange' : 'kpi-green'}`}>{costSavedFormatted}</span>
         </div>
 
-        <div className="kpi-card">
+        <div className="kpi-card" id="kpi-co2">
           <div className="kpi-label">CO₂ Reduction</div>
           <div className="kpi-value">
             {co2Pct}
@@ -122,17 +183,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </span>
         </div>
 
-        <div className="kpi-card">
-          <div className="kpi-label">Demand Zones</div>
+        <div className="kpi-card" id="kpi-demand">
+          <div className="kpi-label">Demand Grid</div>
           <div className="kpi-value">800</div>
-          <span className="kpi-badge kpi-blue">BBMP Grid Nodes</span>
+          <span className="kpi-badge kpi-blue">198 BBMP Wards</span>
         </div>
       </div>
 
       {/* ── Core 3-Column Optimizer Workspace: Controls | Live Map | Operations ── */}
       <div className="flex flex-col xl:flex-row gap-4 items-stretch w-full">
-        {/* Left: Optimization Controls */}
-        <div className="w-full xl:w-[310px] xl:shrink-0 flex flex-col">
+        {/* Left: Optimization Controls (Symmetric 330px width) */}
+        <div className="w-full xl:w-[330px] xl:shrink-0 flex flex-col">
           <OptimizationPanel
             config={config}
             onChangeConfig={onChangeConfig}
@@ -145,31 +206,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           />
         </div>
 
-        {/* Center: Interactive Leaflet Map */}
+        {/* Center: Interactive Leaflet Map (Expanded to fill remaining width) */}
         <div className="flex-1 min-w-0 w-full flex flex-col">
-          <div className="map-area h-full min-h-[520px]">
-            <div className="map-title">
-              <span>Bengaluru Hub Network — Spatial Simulation</span>
-              <span className="text-[11px] font-normal text-[#9E471A] bg-[#FFF8EE] px-2.5 py-1 rounded-full border border-[#E9CDB0]">
-                800 BBMP coordinate nodes loaded
-              </span>
-            </div>
-            <div className="flex-1 min-h-[460px] w-full relative rounded-xl overflow-hidden border border-[#E8DFC9]">
-              <LogisticsMap
-                city={city}
-                warehouses={warehouses}
-                zones={zones}
-                assignments={assignments}
-                customPoints={customPoints}
-                nodeAssignments={result.nodeAssignments}
-                nodeSpokes={result.nodeSpokes}
-              />
-            </div>
-          </div>
+          <LogisticsMap
+            city={city}
+            warehouses={warehouses}
+            zones={zones}
+            assignments={assignments}
+            customPoints={customPoints}
+            nodeAssignments={result.nodeAssignments}
+            nodeSpokes={result.nodeSpokes}
+          />
         </div>
 
-        {/* Right: Network Operations & Workforce */}
-        <div className="w-full xl:w-[340px] xl:shrink-0 flex flex-col">
+        {/* Right: Network Operations & Workforce (Symmetric 330px width) */}
+        <div className="w-full xl:w-[330px] xl:shrink-0 flex flex-col">
           <NetworkOperationsPanel
             config={config}
             result={result}

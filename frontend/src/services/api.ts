@@ -22,11 +22,8 @@ import { BENGALURU_800_POINTS } from '../data/rawBengaluruPoints';
 import { runOptimization } from '../utils/solver';
 import { calculateDeliveryTimeMinutes, calculateDistanceKm } from '../utils/geo';
 
-let API_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL as string) ||
-  (typeof window !== 'undefined' && window.location.hostname.includes('onrender.com')
-    ? 'https://namma-warehouse-6ynz.onrender.com/api'
-    : '/api');
+const rawBase = ((import.meta.env.VITE_API_BASE_URL as string) || '').replace(/\/+$/, '');
+const API_BASE_URL = rawBase ? (rawBase.endsWith('/api') ? rawBase : `${rawBase}/api`) : '/api';
 
 export interface BackendStatus {
   online: boolean;
@@ -53,31 +50,7 @@ export interface CityApiResponse {
     nearest_locality: string;
     zone: string;
   }>;
-  defaults: {
-    num_warehouses: number;
-    property_size_sqft: number;
-    budget_monthly?: number | null;
-    petrol_cost_per_km: number;
-    batch_size: number;
-    min_dispersion_km: number;
-    max_radius_km: number;
-    ev_fleet_pct: number;
-    target_sla_minutes: number;
-  };
-}
-
-export interface OptimizationRequest {
-  num_warehouses: number;
-  property_size_sqft: number;
-  budget_monthly?: number | null;
-  petrol_cost_per_km: number;
-  batch_size: number;
-  min_dispersion_km: number;
-  max_radius_km: number;
-  ev_fleet_pct: number;
-  demand_multiplier: number;
-  traffic_multiplier: number;
-  custom_points?: any[];
+  defaults: Record<string, unknown>;
 }
 
 class GridpointApiService {
@@ -87,12 +60,10 @@ class GridpointApiService {
   private currentResult: OptimizationResult | null = null;
   private backendStatus: BackendStatus = { online: false, checkedAt: 0 };
   private cityDataCache: CityApiResponse | null = null;
+  private tradeoffCache: Map<string, Array<{ count: number; cost: number; isOptimal: boolean }>> = new Map();
   private statusListeners: Array<(status: BackendStatus) => void> = [];
-  private customPoints: Array<Record<string, unknown>> | null = null;
 
   constructor() {
-    // Initial health check
-    this.checkBackendHealth();
     // Initial baseline client result
     this.currentResult = runOptimization(
       this.candidateWarehouses,
@@ -118,48 +89,34 @@ class GridpointApiService {
   }
 
   /**
-   * Checks whether the FastAPI backend is running and healthy, auto-discovering the active endpoint
+   * Checks whether the FastAPI backend is running and healthy
    */
   async checkBackendHealth(): Promise<BackendStatus> {
-    const candidates = Array.from(
-      new Set(
-        [
-          API_BASE_URL,
-          import.meta.env.VITE_API_BASE_URL as string,
-          'https://namma-warehouse-6ynz.onrender.com/api',
-          'https://namma-warehouse-backend.onrender.com/api',
-          '/api',
-        ].filter(Boolean) as string[]
-      )
-    );
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2500);
 
-    for (const targetUrl of candidates) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 4000);
+      // Probe either the root or /api/city endpoint
+      const res = await fetch(`${API_BASE_URL}/city`, {
+        method: 'GET',
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
 
-        const res = await fetch(`${targetUrl}/city`, {
-          method: 'GET',
-          signal: controller.signal,
-        });
-        clearTimeout(timeoutId);
-
-        if (res.ok) {
-          const data = await res.json();
-          API_BASE_URL = targetUrl;
-          this.cityDataCache = data;
-          const status: BackendStatus = {
-            online: true,
-            version: '2.0.0',
-            service: 'GRIDPOINT FastAPI Backend',
-            checkedAt: Date.now(),
-          };
-          this.notifyStatus(status);
-          return status;
-        }
-      } catch {
-        // Try next candidate
+      if (res.ok) {
+        const data = await res.json();
+        this.cityDataCache = data;
+        const status: BackendStatus = {
+          online: true,
+          version: '2.0.0',
+          service: 'GRIDPOINT FastAPI Backend',
+          checkedAt: Date.now(),
+        };
+        this.notifyStatus(status);
+        return status;
       }
+    } catch {
+      // Backend not responding, fallback to local
     }
 
     const offlineStatus: BackendStatus = {
@@ -208,18 +165,21 @@ class GridpointApiService {
           : (this.currentConfig.budgetMonthly && this.currentConfig.budgetMonthly > 0 ? this.currentConfig.budgetMonthly : null);
 
       const fuelPerKm =
-        this.currentConfig.petrolCostPerKm !== undefined && !this.currentConfig.fuelPrice
+        this.currentConfig.petrolCostPerKm !== undefined
           ? this.currentConfig.petrolCostPerKm
-          : Number(((this.currentConfig.fuelPrice || 96.5) / 48.25).toFixed(2)) || 2.0;
+          : Number((this.currentConfig.fuelPrice / 50.0).toFixed(2)) || 2.0;
 
       const propSize = this.currentConfig.propertySizeSqft || 2500.0;
-      const bSize = (this.currentConfig.batchSize && this.currentConfig.batchSize >= 1) ? this.currentConfig.batchSize : 23;
+      const bSize = (this.currentConfig.batchSize && this.currentConfig.batchSize >= 12) ? this.currentConfig.batchSize : 23;
       const dMin = this.currentConfig.minDispersionKm ?? 6.5;
       const evPct = this.currentConfig.evFleetPct ?? (this.currentConfig.evShare ?? 0);
-      const demandMult = this.currentConfig.demandMultiplier ?? 1.0;
-      const trafficMult = this.currentConfig.trafficMultiplier ?? 1.0;
 
-      let url = `${API_BASE_URL}/tradeoff?property_size_sqft=${propSize}&petrol_cost_per_km=${fuelPerKm}&batch_size=${bSize}&min_dispersion_km=${dMin}&target_p=${pCount}&ev_fleet_pct=${evPct}&demand_multiplier=${demandMult}&traffic_multiplier=${trafficMult}`;
+      const cacheKey = `${propSize}_${fuelPerKm}_${bSize}_${dMin}_${pCount}_${evPct}_${budgetInInr || '0'}`;
+      if (this.tradeoffCache.has(cacheKey)) {
+        return this.tradeoffCache.get(cacheKey)!;
+      }
+
+      let url = `${API_BASE_URL}/tradeoff?property_size_sqft=${propSize}&petrol_cost_per_km=${fuelPerKm}&batch_size=${bSize}&min_dispersion_km=${dMin}&target_p=${pCount}&ev_fleet_pct=${evPct}`;
       if (budgetInInr) {
         url += `&budget_monthly=${budgetInInr}`;
       }
@@ -228,14 +188,15 @@ class GridpointApiService {
       if (res.ok) {
         const data = await res.json();
         if (data.points && Array.isArray(data.points)) {
-          const recP = data.recommended_p || pCount;
-          return data.points
+          const points = data.points
             .filter((pt: { num_warehouses: number; total_annual: number; feasible?: boolean }) => pt.feasible !== false && pt.total_annual > 0)
             .map((pt: { num_warehouses: number; total_annual: number; feasible?: boolean }) => ({
               count: pt.num_warehouses,
               cost: Number((pt.total_annual / 100000).toFixed(1)),
-              isOptimal: pt.num_warehouses === recP,
+              isOptimal: pt.num_warehouses === pCount,
             }));
+          this.tradeoffCache.set(cacheKey, points);
+          return points;
         }
       }
     } catch (err) {
@@ -259,19 +220,8 @@ class GridpointApiService {
       ...config,
     };
 
-    const steps = [
-      'Connecting to Discrete Spatial Solver...',
-      'Evaluating 800 BBMP candidate nodes & rent benchmarks...',
-      'Enforcing D_min Spatial Dispersion & Regret Allocation...',
-      'Computing consolidated 3-drop milk-run routes & fuel burn...',
-      'Generating optimal logistics network...',
-    ];
-
     if (onProgress) {
-      for (let i = 0; i < steps.length; i++) {
-        onProgress(steps[i], i);
-        await new Promise((r) => setTimeout(r, 160));
-      }
+      onProgress('Evaluating discrete candidate locations & spatial constraints...', 0);
     }
 
     // Try FastAPI Backend
@@ -284,9 +234,9 @@ class GridpointApiService {
           : null;
 
       const fuelPerKm =
-        this.currentConfig.petrolCostPerKm !== undefined && (config.petrolCostPerKm !== undefined || !config.fuelPrice)
+        this.currentConfig.petrolCostPerKm !== undefined
           ? this.currentConfig.petrolCostPerKm
-          : Number(((this.currentConfig.fuelPrice || 96.5) / 48.25).toFixed(2)) || 2.0;
+          : Number((this.currentConfig.fuelPrice / 50.0).toFixed(2)) || 2.0;
 
       const pCount = Math.max(1, Math.min(100, this.currentConfig.maxWarehouses || 3));
       const minDisp = this.currentConfig.minDispersionKm ?? 6.5;
@@ -304,10 +254,9 @@ class GridpointApiService {
         ev_fleet_pct: this.currentConfig.evFleetPct !== undefined ? this.currentConfig.evFleetPct : (this.currentConfig.evShare ?? 0.0),
         picking_time_min: 3.0,
         target_sla_minutes: this.currentConfig.targetSlaMinutes || 10.0,
-        demand_multiplier: this.currentConfig.demandMultiplier ?? 1.0,
-        traffic_multiplier: this.currentConfig.trafficMultiplier ?? 1.0,
-        disabled_warehouse_ids: this.currentConfig.disabledWarehouseIds ?? [],
-        custom_points: this.customPoints ?? undefined,
+        demand_multiplier: this.currentConfig.demandMultiplier || 1.0,
+        traffic_multiplier: this.currentConfig.trafficMultiplier || 1.0,
+        disabled_warehouse_ids: this.currentConfig.disabledWarehouseIds || [],
       };
 
       const res = await fetch(`${API_BASE_URL}/optimize`, {
@@ -342,11 +291,11 @@ class GridpointApiService {
             infeasibleMessage: backendRes.message || 'No feasible solution found under the specified constraints.',
             suggestedBudget: backendRes.suggested_budget,
             summaryMessage: `✗ INFEASIBLE: ${backendRes.message || backendRes.reason || 'Constraint violation'}`,
-            warehouses: this.currentResult?.warehouses || [],
+            warehouses: (this.currentResult?.warehouses || []).map((w) => ({ ...w, isSelected: false })),
             zones: this.currentResult?.zones || [],
-            assignments: this.currentResult?.assignments || [],
-            selectedWarehouseIds: this.currentResult?.selectedWarehouseIds || [],
-            kpi: this.currentResult?.kpi || {
+            assignments: [],
+            selectedWarehouseIds: [],
+            kpi: {
               optimalWarehouses: 0,
               totalCostLakhs: 0,
               avgDeliveryTimeMin: 0,
@@ -361,7 +310,7 @@ class GridpointApiService {
                 slaCompliancePercent: 0,
               },
             },
-            analytics: this.currentResult?.analytics || {
+            analytics: {
               costVsWarehouses: [],
               warehouseUtilization: [],
               costBreakdown: [],
@@ -370,8 +319,8 @@ class GridpointApiService {
               co2ByWarehouse: [],
             },
             executionTimeMs: backendRes.meta?.solve_time_ms || 0,
-            nodeAssignments: this.currentResult?.nodeAssignments,
-            nodeSpokes: this.currentResult?.nodeSpokes,
+            nodeAssignments: {},
+            nodeSpokes: [],
           };
           this.currentResult = infeasibleResult;
           return infeasibleResult;
@@ -444,19 +393,13 @@ class GridpointApiService {
       annual_fuel_savings?: number;
       annual_co2_saved_tons?: number;
       total_employees?: number;
-      daily_driver_wages?: number;
-      monthly_driver_wages?: number;
-      annual_driver_wages?: number;
-    };
-    baseline?: {
-      total_annual: number;
-      avg_delivery_time_min: number;
-      fuel_consumed_liters: number;
-      co2_emissions_tons: number;
-      sla_compliance_pct: number;
-      annual_fuel_cost?: number;
-      monthly_rent?: number;
-      annual_driver_wages?: number;
+      baseline?: {
+        total_cost_lakhs: number;
+        avg_delivery_time_min: number;
+        fuel_consumed_liters: number;
+        co2_emissions_tons: number;
+        sla_compliance_percent: number;
+      };
     };
     meta?: {
       solve_time_ms?: number;
@@ -503,23 +446,58 @@ class GridpointApiService {
         .map((cw) => ({ ...cw, isSelected: false })),
     ];
 
-    // Map demand zones to their closest selected warehouse by road network distance
+    // Compute delivery assignments
+    const assignmentsMap = new Map<string, typeof backendRes.assignments[0]>();
+    backendRes.assignments.forEach((a) => {
+      assignmentsMap.set(a.demand_id, a);
+    });
+
+    // Map demand zones: resolve Zone ID (Z01-Z20) to closest discrete BBMP coordinate node assignment
     const updatedZones: DemandZone[] = this.demandZones.map((z) => {
-      let nearestWh = selectedWarehouses[0];
-      let minDist = Infinity;
-      for (const w of selectedWarehouses) {
-        const d = calculateDistanceKm(z.lat, z.lng, w.lat, w.lng) * 1.4;
-        if (d < minDist) {
-          minDist = d;
-          nearestWh = w;
+      // 1. Direct match if demand_id equals zone id (e.g. custom zones)
+      let assignment = assignmentsMap.get(z.id);
+
+      // 2. Spatial match: find the nearest candidate node in BENGALURU_800_POINTS
+      if (!assignment) {
+        let bestDistSq = Infinity;
+        let closestPtId = '';
+        for (const pt of BENGALURU_800_POINTS) {
+          const dSq = (pt.lat - z.lat) ** 2 + (pt.lng - z.lng) ** 2;
+          if (dSq < bestDistSq) {
+            bestDistSq = dSq;
+            closestPtId = pt.id;
+          }
+        }
+        if (closestPtId) {
+          assignment = assignmentsMap.get(closestPtId);
         }
       }
-      const deliveryTime = calculateDeliveryTimeMinutes(minDist, z.trafficIndex);
+
+      // 3. Fallback: find nearest selected warehouse
+      let targetWhId = assignment ? assignment.warehouse_id : selectedWarehouseIds[0];
+      let dist = assignment ? assignment.distance_km : 12.0;
+      if (!assignment) {
+        let minDist = Infinity;
+        selectedWarehouses.forEach((w) => {
+          const d = calculateDistanceKm(z.lat, z.lng, w.lat, w.lng) * 1.35;
+          if (d < minDist) {
+            minDist = d;
+            targetWhId = w.id;
+          }
+        });
+        dist = minDist;
+      }
+
+      const deliveryTime = calculateDeliveryTimeMinutes(
+        dist,
+        z.trafficIndex,
+        this.currentConfig.trafficMultiplier || 1.0
+      );
 
       return {
         ...z,
-        assignedWarehouseId: nearestWh ? nearestWh.id : selectedWarehouseIds[0],
-        distanceKm: Number(minDist.toFixed(1)),
+        assignedWarehouseId: targetWhId,
+        distanceKm: Number(dist.toFixed(1)),
         deliveryTimeMinutes: deliveryTime,
       };
     });
@@ -545,7 +523,7 @@ class GridpointApiService {
           deliveryTimeMinutes: z.deliveryTimeMinutes,
           trafficFactor: z.trafficIndex,
           fuelLiters: fuel,
-          co2Kg: Number((fuel * 2.31).toFixed(2)),
+          co2Kg: Number((fuel * 2.68).toFixed(2)),
           color: wh.color || '#15803D',
         });
       }
@@ -588,19 +566,16 @@ class GridpointApiService {
       capacity: w.capacity,
     }));
 
-    // Cost Breakdown: Rent + Fuel + Driver Wages
+    // Cost Breakdown
     const totalAnnLakhs = Math.max(0.1, backendRes.costs.total_annual / 100000);
     const rentShare = Number((backendRes.costs.annual_rent / 100000).toFixed(1));
     const fuelShare = Number((backendRes.costs.annual_fuel / 100000).toFixed(1));
-    const wagesShare = Number(((backendRes.costs.annual_driver_wages ?? 0) / 100000).toFixed(1));
     const rentPct = Math.round((rentShare / totalAnnLakhs) * 100);
-    const fuelPct = Math.round((fuelShare / totalAnnLakhs) * 100);
-    const wagesPct = Math.max(0, 100 - rentPct - fuelPct);
+    const fuelPct = Math.max(0, 100 - rentPct);
 
     const costBreakdown = [
       { name: 'Warehouse Lease', value: rentShare, color: '#78350F', percentage: rentPct },
       { name: 'Transportation & Fuel', value: fuelShare, color: '#DC2626', percentage: fuelPct },
-      { name: 'Driver Wages', value: wagesShare, color: '#2563EB', percentage: wagesPct },
     ];
 
     // Delivery time distribution
@@ -633,7 +608,7 @@ class GridpointApiService {
         .reduce((sum, r) => sum + r.fuelLiters, 0);
       return {
         name: `${w.name.split(' ')[0]} Hub`,
-        co2: Number(((wFuel * 2.31) / 1000).toFixed(2)),
+        co2: Number(((wFuel * 2.68) / 1000).toFixed(2)),
         fuel: Math.round(wFuel),
       };
     });
@@ -655,24 +630,22 @@ class GridpointApiService {
       annualFuelSavings: backendRes.costs.annual_fuel_savings,
       annualCo2SavedTons: backendRes.costs.annual_co2_saved_tons,
       totalEmployees: backendRes.costs.total_employees,
-      dailyDriverWages: backendRes.costs.daily_driver_wages,
-      monthlyDriverWages: backendRes.costs.monthly_driver_wages,
-      annualDriverWages: backendRes.costs.annual_driver_wages,
       evFleetPct: backendRes.costs.ev_fleet_pct,
-      baseline: backendRes.baseline ? {
-        totalCostLakhs: Number((backendRes.baseline.total_annual / 100000).toFixed(1)),
-        avgDeliveryTimeMin: Number(backendRes.baseline.avg_delivery_time_min.toFixed(1)),
-        fuelConsumedLiters: Math.round(backendRes.baseline.fuel_consumed_liters),
-        co2EmissionsTons: Number(backendRes.baseline.co2_emissions_tons.toFixed(1)),
-        slaCompliancePercent: Number(backendRes.baseline.sla_compliance_pct.toFixed(1)),
-        annualDriverWages: backendRes.baseline.annual_driver_wages,
-      } : {
-        totalCostLakhs: Number((totalCostLakhs * 1.24).toFixed(1)),
-        avgDeliveryTimeMin: Number((avgDeliveryTime * 1.35).toFixed(1)),
-        fuelConsumedLiters: Math.round(annualFuelLiters * 1.29),
-        co2EmissionsTons: Number((co2Tons * 1.3).toFixed(1)),
-        slaCompliancePercent: Math.max(1.0, Number(((backendRes.costs.sla_compliance_pct ?? 10) * 0.65).toFixed(1))),
-      },
+      baseline: backendRes.costs.baseline
+        ? {
+            totalCostLakhs: Number(backendRes.costs.baseline.total_cost_lakhs.toFixed(1)),
+            avgDeliveryTimeMin: Number(backendRes.costs.baseline.avg_delivery_time_min.toFixed(1)),
+            fuelConsumedLiters: Math.round(backendRes.costs.baseline.fuel_consumed_liters),
+            co2EmissionsTons: Number(backendRes.costs.baseline.co2_emissions_tons.toFixed(1)),
+            slaCompliancePercent: Number(backendRes.costs.baseline.sla_compliance_percent.toFixed(1)),
+          }
+        : {
+            totalCostLakhs: Number((totalCostLakhs * 1.24).toFixed(1)),
+            avgDeliveryTimeMin: Number((avgDeliveryTime * 1.35).toFixed(1)),
+            fuelConsumedLiters: Math.round(annualFuelLiters * 1.29),
+            co2EmissionsTons: Number((co2Tons * 1.3).toFixed(1)),
+            slaCompliancePercent: Math.max(1.0, Number(((backendRes.costs.sla_compliance_pct ?? 10) * 0.65).toFixed(1))),
+          },
     };
 
     // Build nodeAssignments lookup and nodeSpokes for all 800 demand points (1:1 with index.html)
@@ -762,9 +735,9 @@ class GridpointApiService {
       scenarioConfig.trafficMultiplier = 1 + scenario.percentageChange / 100;
       if (scenario.percentageChange >= 30) scenarioConfig.trafficLevel = 'high';
     } else if (scenario.type === 'fuel' && scenario.percentageChange) {
-      const mult = 1 + scenario.percentageChange / 100;
-      scenarioConfig.fuelPrice = (this.currentConfig.fuelPrice || 96.5) * mult;
-      scenarioConfig.petrolCostPerKm = (this.currentConfig.petrolCostPerKm || 2.0) * mult;
+      const fuelMult = 1 + scenario.percentageChange / 100;
+      scenarioConfig.fuelPrice = this.currentConfig.fuelPrice * fuelMult;
+      scenarioConfig.petrolCostPerKm = Number(((this.currentConfig.petrolCostPerKm ?? 2.0) * fuelMult).toFixed(2));
     } else if (scenario.type === 'warehouse_failure' && scenario.disabledWarehouseId) {
       scenarioConfig.disabledWarehouseIds = [
         ...(this.currentConfig.disabledWarehouseIds || []),
@@ -786,33 +759,6 @@ class GridpointApiService {
       disabledWarehouseIds: [],
     };
     return this.optimizeNetwork(this.currentConfig);
-  }
-
-  /**
-   * Upload custom points CSV
-   */
-  async uploadPoints(csvText: string): Promise<any> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/upload-points`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ csv_text: csvText }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.status === 'ok' && data.points) {
-          (this as any).customPoints = data.points;
-        }
-        return data;
-      }
-    } catch (err) {
-      console.warn('[GRIDPOINT API] uploadPoints failed:', err);
-    }
-    return { status: 'error', message: 'Failed to upload custom dataset' };
-  }
-
-  public setCustomPoints(points: Array<Record<string, unknown>> | null) {
-    (this as any).customPoints = points;
   }
 
   /**

@@ -54,9 +54,14 @@ function MapViewController({
     map.invalidateSize();
     const t1 = setTimeout(() => map.invalidateSize(), 100);
     const t2 = setTimeout(() => map.invalidateSize(), 350);
+    const handleResize = () => {
+      map.invalidateSize();
+    };
+    window.addEventListener('resize', handleResize);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
+      window.removeEventListener('resize', handleResize);
     };
   }, [map]);
 
@@ -151,16 +156,21 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = React.memo(({
   };
 
   return (
-    <div className="relative w-full h-full min-h-[680px] xl:h-[740px] rounded-lg overflow-hidden border border-gray-200 bg-white shadow-sm flex flex-col">
+    <div className="relative w-full h-full min-h-[680px] xl:h-[740px] rounded-xl overflow-hidden border border-[#E8DFC9] bg-white shadow-sm flex flex-col">
       {/* Map Header / Toolbar */}
-      <div className="bg-white border-b border-gray-200 px-4 py-2 flex flex-wrap items-center justify-between gap-2 z-20 shrink-0">
+      <div className="bg-white border-b border-[#E8DFC9] px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 z-20 shrink-0">
         <div className="flex items-center gap-2">
           <div>
-            <h2 className="text-sm font-semibold text-gray-900">
-              Bangalore Demand & Warehouse Network
-            </h2>
-            <p className="text-[11px] text-gray-500">
-              {rawPoints.length} demand nodes · <span className="font-medium text-gray-700">{selectedWarehouses.length} active hubs</span>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold text-[#261B14] font-['Space_Grotesk']">
+                Bengaluru Hub Network — Spatial Simulation
+              </h2>
+              <span className="text-[10px] font-semibold text-[#9E471A] bg-[#FFF8EE] px-2.5 py-0.5 rounded-full border border-[#E9CDB0]">
+                800 BBMP nodes
+              </span>
+            </div>
+            <p className="text-[11px] text-[#7A7168] mt-0.5">
+              {rawPoints.length} demand nodes · <span className="font-semibold text-emerald-700">{selectedWarehouses.length} active hubs</span>
             </p>
           </div>
         </div>
@@ -168,14 +178,14 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = React.memo(({
         {/* Map Action Buttons */}
         <div className="flex items-center gap-1.5 flex-wrap">
           {/* Node Display Mode Toggle (Calculated Hubs vs All Nodes) */}
-          <div className="flex items-center bg-gray-100 border border-gray-200 rounded-md p-0.5 text-xs font-medium">
+          <div className="flex items-center bg-[#FAF7EF] border border-[#E8DFC9] rounded-lg p-0.5 text-xs font-medium">
             <button
               type="button"
               onClick={() => setFocusWarehousesOnly(false)}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded transition-all cursor-pointer ${
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-md transition-all cursor-pointer ${
                 !focusWarehousesOnly
-                  ? 'bg-white text-gray-900 shadow-sm font-semibold'
-                  : 'text-gray-500 hover:text-gray-700'
+                  ? 'bg-white text-[#9E471A] shadow-sm font-bold'
+                  : 'text-[#7A7168] hover:text-[#261B14]'
               }`}
               title="Show warehouse locations alongside other nodes (colored by catchment)"
             >
@@ -185,10 +195,10 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = React.memo(({
             <button
               type="button"
               onClick={() => setFocusWarehousesOnly(true)}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded transition-all cursor-pointer ${
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-md transition-all cursor-pointer ${
                 focusWarehousesOnly
-                  ? 'bg-violet-600 text-white shadow-sm font-semibold'
-                  : 'text-gray-500 hover:text-gray-700'
+                  ? 'bg-[#9E471A] text-white shadow-sm font-semibold'
+                  : 'text-[#7A7168] hover:text-[#261B14]'
               }`}
               title="Show only calculated warehouse locations (other nodes grey)"
             >
@@ -201,9 +211,9 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = React.memo(({
           <button
             onClick={() => setFocusTrigger((prev) => prev + 1)}
             title="Auto-fit camera to all active warehouse hubs"
-            className="flex items-center gap-1 px-2.5 py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-md text-xs font-medium text-gray-700 transition-colors cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-[#FFF8EE] hover:bg-[#FAF3E3] border border-[#E9CDB0] rounded-lg text-xs font-semibold text-[#9E471A] transition-colors cursor-pointer"
           >
-            <Maximize2 className="w-3.5 h-3.5 text-gray-500" />
+            <Maximize2 className="w-3.5 h-3.5 text-[#9E471A]" />
             <span className="hidden sm:inline">Fit Hubs</span>
           </button>
 
@@ -212,9 +222,9 @@ export const LogisticsMap: React.FC<LogisticsMapProps> = React.memo(({
             <button
               id="map-layers-toggle-btn"
               onClick={() => setIsLayerMenuOpen(!isLayerMenuOpen)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-md text-xs font-medium text-gray-700 transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#FFF8EE] hover:bg-[#FAF3E3] border border-[#E9CDB0] rounded-lg text-xs font-semibold text-[#9E471A] transition-colors cursor-pointer"
             >
-              <Layers className="w-3.5 h-3.5 text-gray-500" />
+              <Layers className="w-3.5 h-3.5 text-[#9E471A]" />
               <span>Layers</span>
             </button>
 

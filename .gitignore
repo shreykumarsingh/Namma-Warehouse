@@ -20,7 +20,6 @@ venv/
 # Environment & local files
 .env
 .env.local
-!.env.production
 *.log
 
 # Editor & OS
@@ -28,3 +27,5 @@ venv/
 .idea/
 .DS_Store
 Thumbs.db
+.agents/
+scratch/__pycache__/

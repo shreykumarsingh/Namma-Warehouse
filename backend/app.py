@@ -1,10 +1,10 @@
 import os
 import uvicorn
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Query
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Optional, List, Dict, Any
+from typing import Optional
 
 from fastapi.staticfiles import StaticFiles
 
@@ -12,10 +12,7 @@ from schemas import (
     OptimizeRequest,
     OptimizeResponse,
     CityResponse,
-    TradeoffResponse,
-    UploadPointsRequest,
-    UploadPointsResponse,
-    CityDataPoint
+    TradeoffResponse
 )
 from solver import GridpointSolver
 
@@ -48,44 +45,41 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-import io
-import csv
-
-# Enable CORS for local dev & production environments (including Render)
+# Enable CORS for all frontends (React, Vite, Next.js, Leaflet)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-    ],
-    allow_origin_regex=r"^https?://.*$",
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Mount React 19 Frontend Dashboard if compiled
+# Mount React Frontend Dashboard if compiled
 FRONTEND_DIST = os.path.join(BASE_DIR, "frontend", "dist")
 if os.path.exists(FRONTEND_DIST):
+    assets_dir = os.path.join(FRONTEND_DIST, "assets")
+    if os.path.exists(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+    data_dir = os.path.join(FRONTEND_DIST, "data")
+    if os.path.exists(data_dir):
+        app.mount("/data", StaticFiles(directory=data_dir), name="data")
     app.mount("/dashboard", StaticFiles(directory=FRONTEND_DIST, html=True), name="dashboard")
 
-@app.get("/", summary="Health Check")
-def root():
+@app.get("/health", summary="Health Check")
+@app.get("/api/health", summary="API Health Check")
+def health_check():
     return {
         "status": "online",
         "service": "GRIDPOINT Discrete Spatial Optimization API",
         "version": "2.0.0",
         "method": "Discrete Capacitated Facility Location with Spatial Dispersion",
-        "endpoints": ["/dashboard", "/app", "/api/city", "/api/optimize", "/api/tradeoff", "/api/upload-points", "/docs"]
+        "endpoints": ["/api/health", "/api/city", "/api/optimize", "/api/tradeoff", "/docs"]
     }
 
+@app.get("/", summary="Dashboard Application")
 @app.get("/app", summary="Visualization Frontend")
 def serve_frontend():
-    """Serves the frontend dashboard."""
+    """Serves the frontend single-page application."""
     index_path = os.path.join(FRONTEND_DIST, "index.html")
     if os.path.exists(index_path):
         return FileResponse(
@@ -97,7 +91,7 @@ def serve_frontend():
                 "Expires": "0"
             }
         )
-    return {"status": "ok", "message": "Frontend running via Vite at http://localhost:3000 or run 'npm run build' in frontend/"}
+    return health_check()
 
 @app.get("/api/city", response_model=CityResponse, summary="Fetch City Grid & Metadata")
 def get_city():
@@ -114,8 +108,7 @@ def optimize_network(req: OptimizeRequest):
     - Finds p optimal warehouse locations minimizing total operational cost (rent + batched fuel)
     - Enforces Spatial Dispersion (D_min) to guarantee warehouses never clump nearby
     - Employs Regret-First assignment to prevent capacity deadlocks and stranded nodes
-    - Transmits demand multipliers, traffic multipliers, and warehouse outages for real scenarios
-    - Computes real baseline comparison against single centralized facility
+    - Applies 3-delivery order batching (milk-run routing)
     """
     result = solver.solve(
         num_warehouses=req.num_warehouses,
@@ -132,8 +125,7 @@ def optimize_network(req: OptimizeRequest):
         target_sla_minutes=req.target_sla_minutes,
         demand_multiplier=req.demand_multiplier,
         traffic_multiplier=req.traffic_multiplier,
-        disabled_warehouse_ids=req.disabled_warehouse_ids,
-        custom_points=req.custom_points
+        disabled_warehouse_ids=req.disabled_warehouse_ids
     )
     return result
 
@@ -145,12 +137,10 @@ def get_tradeoff(
     batch_size: int = Query(23, description="Deliveries per driver per day (default: 23)"),
     min_dispersion_km: float = Query(6.5, description="Min separation distance between hubs in km"),
     target_p: Optional[int] = Query(None, description="Current chosen warehouse count to highlight"),
-    ev_fleet_pct: float = Query(0.0, description="EV fleet percentage"),
-    demand_multiplier: float = Query(1.0, description="Demand multiplier"),
-    traffic_multiplier: float = Query(1.0, description="Traffic multiplier")
+    ev_fleet_pct: float = Query(0.0, description="EV fleet percentage")
 ):
     """
-    Generates the true U-curve trade-off data showing how total operational cost evolves
+    Generates the U-curve trade-off data showing how total operational cost evolves
     across candidate warehouse counts under spatial dispersion and EV green fleet constraints.
     """
     return solver.compute_tradeoff(
@@ -160,110 +150,14 @@ def get_tradeoff(
         batch_size=batch_size,
         min_dispersion_km=min_dispersion_km,
         target_p=target_p,
-        ev_fleet_pct=ev_fleet_pct,
-        demand_multiplier=demand_multiplier,
-        traffic_multiplier=traffic_multiplier
-    )
-
-@app.post("/api/upload-points", response_model=UploadPointsResponse, summary="Upload Custom Neighborhood CSV Dataset")
-async def upload_custom_points(request: Request):
-    """
-    Accepts custom neighborhood points either as JSON (with 'csv_text' or 'points') or raw CSV payload.
-    Validates and indexes points for visualization and optimization.
-    """
-    body_json = None
-    csv_text = None
-    points_input = None
-
-    try:
-        body_json = await request.json()
-        if isinstance(body_json, dict):
-            csv_text = body_json.get("csv_text")
-            points_input = body_json.get("points")
-        elif isinstance(body_json, list):
-            points_input = body_json
-    except Exception:
-        raw_bytes = await request.body()
-        if raw_bytes:
-            csv_text = raw_bytes.decode("utf-8-sig", errors="replace")
-
-    parsed_points = []
-
-    if points_input and isinstance(points_input, list):
-        for i, row in enumerate(points_input):
-            try:
-                lat = float(row.get('latitude') or row.get('lat') or 12.97)
-                lng = float(row.get('longitude') or row.get('lng') or 77.59)
-                orders = float(row.get('orders_per_day') or row.get('orders') or row.get('daily_orders') or 100.0)
-                price = float(row.get('price_per_sqft') or row.get('price') or row.get('sqft_price') or 8500.0)
-                traffic = float(row.get('traffic_index') or row.get('traffic') or 0.5)
-                name = str(row.get('name') or row.get('locality') or row.get('neighborhood') or row.get('nearest_locality') or f"Node {i+1}")
-                pid = str(row.get('point_id') or row.get('id') or f"c{i+1:03d}")
-                zone = str(row.get('zone') or 'Custom')
-
-                parsed_points.append(CityDataPoint(
-                    point_id=pid,
-                    latitude=lat,
-                    longitude=lng,
-                    orders_per_day=orders,
-                    price_per_sqft=price,
-                    traffic_index=min(1.0, max(0.05, traffic)),
-                    norm_demand=float(row.get('norm_demand') or 0.5),
-                    norm_price=float(row.get('norm_price') or 0.5),
-                    norm_traffic=min(1.0, max(0.05, traffic)),
-                    suitability_score=float(row.get('suitability_score') or 0.5),
-                    nearest_locality=name,
-                    zone=zone
-                ))
-            except Exception:
-                continue
-
-    elif csv_text:
-        reader = csv.DictReader(io.StringIO(csv_text))
-        for i, row in enumerate(reader):
-            try:
-                lat = float(row.get('latitude') or row.get('lat') or 12.97)
-                lng = float(row.get('longitude') or row.get('lng') or 77.59)
-                orders = float(row.get('orders_per_day') or row.get('orders') or row.get('daily_orders') or 100.0)
-                price = float(row.get('price_per_sqft') or row.get('price') or row.get('sqft_price') or 8500.0)
-                traffic = float(row.get('traffic_index') or row.get('traffic') or 0.5)
-                name = str(row.get('name') or row.get('locality') or row.get('neighborhood') or f"Node {i+1}")
-                pid = str(row.get('point_id') or row.get('id') or f"c{i+1:03d}")
-                zone = str(row.get('zone') or 'Custom')
-
-                parsed_points.append(CityDataPoint(
-                    point_id=pid,
-                    latitude=lat,
-                    longitude=lng,
-                    orders_per_day=orders,
-                    price_per_sqft=price,
-                    traffic_index=min(1.0, max(0.05, traffic)),
-                    norm_demand=0.5,
-                    norm_price=0.5,
-                    norm_traffic=min(1.0, max(0.05, traffic)),
-                    suitability_score=0.5,
-                    nearest_locality=name,
-                    zone=zone
-                ))
-            except Exception:
-                continue
-
-    if not parsed_points:
-        return UploadPointsResponse(
-            status="error",
-            message="No valid coordinate rows found in uploaded data.",
-            total_points=0,
-            total_daily_orders=0.0,
-            points=[]
-        )
-
-    return UploadPointsResponse(
-        status="ok",
-        message=f"Successfully loaded {len(parsed_points)} points.",
-        total_points=len(parsed_points),
-        total_daily_orders=sum(p.orders_per_day for p in parsed_points),
-        points=parsed_points
+        ev_fleet_pct=ev_fleet_pct
     )
 
 if __name__ == "__main__":
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True, app_dir=os.path.dirname(os.path.abspath(__file__)))
+    port = int(os.environ.get("PORT", 8000))
+    host = os.environ.get("HOST", "0.0.0.0")
+    is_prod = os.environ.get("ENVIRONMENT", "development").lower() == "production"
+    if is_prod:
+        uvicorn.run(app, host=host, port=port)
+    else:
+        uvicorn.run("app:app", host=host, port=port, reload=True, app_dir=os.path.dirname(os.path.abspath(__file__)))
